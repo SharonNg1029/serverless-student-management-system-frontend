@@ -1,0 +1,65 @@
+/* Updated navbar with modern design: dark blue background (#293548), white text, and orange hover (#e38214) */
+.navbar {
+  background-color: #293548;
+  padding: 1rem 0;
+  border-bottom: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.navbar-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.navbar-logo {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #ffffff;
+  text-decoration: none;
+  transition: color 0.3s;
+}
+
+.navbar-logo:hover {
+  color: #e38214;
+}
+
+.navbar-menu {
+  display: flex;
+  gap: 2rem;
+}
+
+.navbar-item {
+  color: #ffffff;
+  text-decoration: none;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  position: relative;
+}
+
+.navbar-item:hover {
+  color: #e38214;
+  background-color: rgba(227, 130, 20, 0.1);
+}
+
+.navbar-item.active {
+  color: #e38214;
+  background-color: rgba(227, 130, 20, 0.15);
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .navbar-menu {
+    gap: 1rem;
+  }
+
+  .navbar-item {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.9rem;
+  }
+}

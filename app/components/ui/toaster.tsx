@@ -3,7 +3,7 @@ import { CheckCircle2, XCircle, AlertCircle, Info } from 'lucide-react'
 
 export const toaster = createToaster({
   placement: 'bottom-end',
-  pauseOnPageIdle: true,
+  pauseOnPageIdle: true
 })
 
 export function Toaster() {
@@ -12,21 +12,31 @@ export function Toaster() {
       {(toast) => {
         const getBackgroundColor = () => {
           switch (toast.type) {
-            case 'success': return '#22c55e'
-            case 'error': return '#ef4444'
-            case 'warning': return '#f97316'
-            case 'info': return '#1f2937'
-            default: return '#64748b'
+            case 'success':
+              return '#22c55e'
+            case 'error':
+              return '#ef4444'
+            case 'warning':
+              return '#f97316'
+            case 'info':
+              return '#1f2937'
+            default:
+              return '#64748b'
           }
         }
 
         const getIcon = () => {
           switch (toast.type) {
-            case 'success': return <CheckCircle2 size={20} />
-            case 'error': return <XCircle size={20} />
-            case 'warning': return <AlertCircle size={20} />
-            case 'info': return <Info size={20} />
-            default: return null
+            case 'success':
+              return <CheckCircle2 size={20} />
+            case 'error':
+              return <XCircle size={20} />
+            case 'warning':
+              return <AlertCircle size={20} />
+            case 'info':
+              return <Info size={20} />
+            default:
+              return null
           }
         }
 
@@ -45,41 +55,47 @@ export function Toaster() {
               pointerEvents: 'auto',
               display: 'flex',
               alignItems: 'center',
-              gap: '12px',
+              gap: '12px'
             }}
           >
-            <div style={{ 
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
+            <div
+              style={{
+                flexShrink: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
               {getIcon()}
             </div>
             <div style={{ flex: 1 }}>
               {toast.title && (
-                <Toast.Title style={{ 
-                  fontWeight: '600', 
-                  fontSize: '15px',
-                  marginBottom: toast.description ? '4px' : '0',
-                  color: 'white',
-                  lineHeight: '1.4'
-                }}>
+                <Toast.Title
+                  style={{
+                    fontWeight: '600',
+                    fontSize: '15px',
+                    marginBottom: toast.description ? '4px' : '0',
+                    color: 'white',
+                    lineHeight: '1.4'
+                  }}
+                >
                   {toast.title}
                 </Toast.Title>
               )}
               {toast.description && (
-                <Toast.Description style={{ 
-                  fontSize: '13px', 
-                  opacity: 0.95,
-                  lineHeight: '1.5',
-                  color: 'white'
-                }}>
+                <Toast.Description
+                  style={{
+                    fontSize: '13px',
+                    opacity: 0.95,
+                    lineHeight: '1.5',
+                    color: 'white'
+                  }}
+                >
                   {toast.description}
                 </Toast.Description>
               )}
             </div>
-            <Toast.CloseTrigger 
+            <Toast.CloseTrigger
               style={{
                 position: 'absolute',
                 top: '12px',
@@ -96,7 +112,7 @@ export function Toaster() {
                 color: 'white',
                 fontSize: '14px',
                 transition: 'all 0.2s ease',
-                flexShrink: 0,
+                flexShrink: 0
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = 'rgba(255, 255, 255, 0.3)'
@@ -111,5 +127,3 @@ export function Toaster() {
     </ChakraToaster>
   )
 }
-
-

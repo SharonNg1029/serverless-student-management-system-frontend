@@ -1,44 +1,558 @@
-import { useAuthStore } from '../../../store/authStore'
-import StudentInfo from './studentInfo'
-import LecturerInfo from './lecturerInfo'
-import AdminInfo from './adminInfo'
+"use client"
+
+import type React from "react"
+
+import { useState, useEffect, useRef } from "react"
+import {
+  User,
+  Mail,
+  Phone,
+  Calendar,
+  Camera,
+  Save,
+  Lock,
+  Eye,
+  EyeOff,
+  Hash,
+  Shield,
+  Loader2,
+  CheckCircle,
+  AlertCircle,
+} from "lucide-react"
+import { useAuthStore } from "../../../store/authStore"
+import { profileApi } from "../../../services/lecturerApi"
+import { toaster } from "../../../components/ui/toaster"
+import type { ProfileDTO } from "../../../types"
+import StudentInfo from "./studentInfo"
+import LecturerInfo from "./lecturerInfo"
+import AdminInfo from "./adminInfo"
 
 export default function ProfileRoute() {
-  const { user } = useAuthStore()
+  const { user, updateUser } = useAuthStore()
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Main profile page - conditional render based on role
+  // Profile state
+  const [profile, setProfile] = useState<ProfileDTO | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [activeTab, setActiveTab] = useState<"info" | "password">("info")
+
+  // Edit state
+  const [isEditing, setIsEditing] = useState(false)
+  const [formData, setFormData] = useState({
+    name: "",
+    date_of_birth: "",
+    phone: "",
+  })
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+
+  // Password state
+  const [passwordData, setPasswordData] = useState({
+    old_password: "",
+    new_password: "",
+    confirm_password: "",
+  })
+  const [showPasswords, setShowPasswords] = useState({
+    old: false,
+    new: false,
+    confirm: false,
+  })
+  const [changingPassword, setChangingPassword] = useState(false)
+
+  // Fetch profile
+  useEffect(() => {
+    fetchProfile()
+  }, [])
+
+  const fetchProfile = async () => {
+    try {
+      setLoading(true)
+      const data = await profileApi.getProfile()
+      setProfile(data)
+      setFormData({
+        name: data.name || "",
+        date_of_birth: data.date_of_birth || "",
+        phone: data.phone || "",
+      })
+    } catch (error: any) {
+      console.error("Error fetching profile:", error)
+      // Use user data from auth store as fallback
+      if (user) {
+        setProfile({
+          id: Number.parseInt(user.id) || 0,
+          name: user.fullName,
+          email: user.email,
+          role_id: user.role === "Admin" ? 1 : user.role === "Lecturer" ? 2 : 3,
+          codeUser: user.username,
+          avatar: user.avatar,
+          phone: user.phone,
+          status: 1,
+        })
+        setFormData({
+          name: user.fullName || "",
+          date_of_birth: "",
+          phone: user.phone || "",
+        })
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setAvatarFile(file)
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setAvatarPreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleSaveProfile = async () => {
+    try {
+      setSaving(true)
+      const data = await profileApi.updateProfile({
+        name: formData.name,
+        date_of_birth: formData.date_of_birth,
+        phone: formData.phone,
+        avatar: avatarFile || undefined,
+      })
+
+      setProfile(data)
+      setIsEditing(false)
+      setAvatarFile(null)
+
+      // Update auth store
+      updateUser({
+        fullName: data.name,
+        phone: data.phone,
+        avatar: data.avatar,
+      })
+
+      toaster.create({
+        title: "Cập nhật thành công",
+        description: "Thông tin cá nhân đã được cập nhật",
+        type: "success",
+      })
+    } catch (error: any) {
+      toaster.create({
+        title: "Cập nhật thất bại",
+        description: error.response?.data?.message || "Có lỗi xảy ra",
+        type: "error",
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleChangePassword = async () => {
+    // Validation
+    if (passwordData.new_password !== passwordData.confirm_password) {
+      toaster.create({
+        title: "Mật khẩu không khớp",
+        description: "Mật khẩu mới và xác nhận mật khẩu phải giống nhau",
+        type: "error",
+      })
+      return
+    }
+
+    if (passwordData.new_password.length < 8) {
+      toaster.create({
+        title: "Mật khẩu quá ngắn",
+        description: "Mật khẩu mới phải có ít nhất 8 ký tự",
+        type: "error",
+      })
+      return
+    }
+
+    try {
+      setChangingPassword(true)
+      await profileApi.changePassword(passwordData)
+
+      setPasswordData({
+        old_password: "",
+        new_password: "",
+        confirm_password: "",
+      })
+
+      toaster.create({
+        title: "Đổi mật khẩu thành công",
+        description: "Mật khẩu của bạn đã được cập nhật",
+        type: "success",
+      })
+    } catch (error: any) {
+      toaster.create({
+        title: "Đổi mật khẩu thất bại",
+        description: error.response?.data?.message || "Mật khẩu cũ không đúng",
+        type: "error",
+      })
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
+  const getRoleName = (roleId: number) => {
+    switch (roleId) {
+      case 1:
+        return "Quản trị viên"
+      case 2:
+        return "Giảng viên"
+      case 3:
+        return "Sinh viên"
+      default:
+        return "Người dùng"
+    }
+  }
+
+  const getRoleColor = (roleId: number) => {
+    switch (roleId) {
+      case 1:
+        return "bg-red-50 text-red-600 border-red-200"
+      case 2:
+        return "bg-purple-50 text-purple-600 border-purple-200"
+      case 3:
+        return "bg-blue-50 text-blue-600 border-blue-200"
+      default:
+        return "bg-slate-50 text-slate-600 border-slate-200"
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 size={40} className="text-[#dd7323] animate-spin mx-auto mb-3" />
+          <p className="text-slate-600">Đang tải thông tin...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="profile-container">
-      <div className="profile-header">
-        <h1>Thông tin cá nhân</h1>
-        <div className="profile-avatar">
-          {/* TODO: Display avatar from S3 */}
-          <img 
-            src={user?.avatar || '/default-avatar.png'} 
-            alt="Avatar" 
-            className="avatar-img"
-          />
-          <button className="btn-upload-avatar">Đổi ảnh đại diện</button>
-        </div>
+    <div className="max-w-5xl mx-auto py-8 px-4">
+      {/* Header */}
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-slate-900">Thông tin cá nhân</h1>
+        <p className="text-slate-500 mt-1">Quản lý thông tin tài khoản và cài đặt bảo mật</p>
       </div>
 
-      <div className="profile-basic-info">
-        <h2>Thông tin chung</h2>
-        <div className="info-group">
-          <label>Email:</label>
-          <input type="email" value={user?.email || ''} readOnly />
-        </div>
-        <div className="info-group">
-          <label>Họ tên:</label>
-          <input type="text" value={user?.fullName || ''} />
-        </div>
-        {/* TODO: Add preferences, notifications settings via Lambda/S3 */}
-      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Column - Avatar & Basic Info Card */}
+        <div className="lg:col-span-1">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            {/* Avatar */}
+            <div className="flex flex-col items-center">
+              <div className="relative group">
+                <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-lg">
+                  <img
+                    src={
+                      avatarPreview ||
+                      profile?.avatar ||
+                      `https://ui-avatars.com/api/?name=${profile?.name || "User"}&background=dd7323&color=fff&size=128`
+                    }
+                    alt={profile?.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <button
+                  onClick={handleAvatarClick}
+                  className="absolute bottom-0 right-0 p-2 bg-[#dd7323] text-white rounded-full shadow-lg hover:bg-[#c2621a] transition-colors"
+                >
+                  <Camera size={18} />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarChange}
+                  className="hidden"
+                />
+              </div>
 
-      {/* Role-specific info */}
-      {user?.role === 'Student' && <StudentInfo />}
-      {user?.role === 'Lecturer' && <LecturerInfo />}
-      {user?.role === 'Admin' && <AdminInfo />}
+              <h2 className="mt-4 text-xl font-bold text-slate-800">{profile?.name}</h2>
+              <p className="text-slate-500 text-sm">{profile?.email}</p>
+
+              <span
+                className={`mt-3 px-3 py-1 rounded-full text-xs font-bold uppercase border ${getRoleColor(profile?.role_id || 3)}`}
+              >
+                {getRoleName(profile?.role_id || 3)}
+              </span>
+            </div>
+
+            {/* Quick Info */}
+            <div className="mt-6 space-y-3 pt-6 border-t border-slate-100">
+              <div className="flex items-center gap-3 text-sm">
+                <div className="p-2 bg-slate-50 rounded-lg">
+                  <Hash size={16} className="text-slate-400" />
+                </div>
+                <div>
+                  <p className="text-slate-400 text-xs">Mã định danh</p>
+                  <p className="font-semibold text-slate-700">{profile?.codeUser || "N/A"}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 text-sm">
+                <div className="p-2 bg-slate-50 rounded-lg">
+                  <Shield size={16} className="text-slate-400" />
+                </div>
+                <div>
+                  <p className="text-slate-400 text-xs">Trạng thái</p>
+                  <p className="font-semibold text-emerald-600 flex items-center gap-1">
+                    <CheckCircle size={14} /> Đang hoạt động
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column - Tabs & Forms */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Tab Navigation */}
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="flex border-b border-slate-100">
+              <button
+                onClick={() => setActiveTab("info")}
+                className={`flex-1 px-6 py-4 text-sm font-semibold transition-colors ${
+                  activeTab === "info"
+                    ? "text-[#dd7323] border-b-2 border-[#dd7323] bg-orange-50/50"
+                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <User size={18} className="inline mr-2" />
+                Thông tin cá nhân
+              </button>
+              <button
+                onClick={() => setActiveTab("password")}
+                className={`flex-1 px-6 py-4 text-sm font-semibold transition-colors ${
+                  activeTab === "password"
+                    ? "text-[#dd7323] border-b-2 border-[#dd7323] bg-orange-50/50"
+                    : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                }`}
+              >
+                <Lock size={18} className="inline mr-2" />
+                Đổi mật khẩu
+              </button>
+            </div>
+
+            <div className="p-6">
+              {activeTab === "info" ? (
+                <div className="space-y-5">
+                  {/* Name */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      <User size={14} className="inline mr-1" /> Họ và tên
+                    </label>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all"
+                        placeholder="Nhập họ và tên"
+                      />
+                    ) : (
+                      <p className="px-4 py-3 bg-slate-50 rounded-xl text-slate-700">
+                        {profile?.name || "Chưa cập nhật"}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Email - Read only */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      <Mail size={14} className="inline mr-1" /> Email
+                    </label>
+                    <p className="px-4 py-3 bg-slate-50 rounded-xl text-slate-500 flex items-center gap-2">
+                      {profile?.email}
+                      <span className="text-xs bg-slate-200 text-slate-600 px-2 py-0.5 rounded">
+                        Không thể thay đổi
+                      </span>
+                    </p>
+                  </div>
+
+                  {/* Phone */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      <Phone size={14} className="inline mr-1" /> Số điện thoại
+                    </label>
+                    {isEditing ? (
+                      <input
+                        type="tel"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all"
+                        placeholder="Nhập số điện thoại"
+                      />
+                    ) : (
+                      <p className="px-4 py-3 bg-slate-50 rounded-xl text-slate-700">
+                        {profile?.phone || "Chưa cập nhật"}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Date of Birth */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      <Calendar size={14} className="inline mr-1" /> Ngày sinh
+                    </label>
+                    {isEditing ? (
+                      <input
+                        type="date"
+                        value={formData.date_of_birth}
+                        onChange={(e) => setFormData({ ...formData, date_of_birth: e.target.value })}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all"
+                      />
+                    ) : (
+                      <p className="px-4 py-3 bg-slate-50 rounded-xl text-slate-700">
+                        {profile?.date_of_birth
+                          ? new Date(profile.date_of_birth).toLocaleDateString("vi-VN")
+                          : "Chưa cập nhật"}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-3 pt-4">
+                    {isEditing ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            setIsEditing(false)
+                            setFormData({
+                              name: profile?.name || "",
+                              date_of_birth: profile?.date_of_birth || "",
+                              phone: profile?.phone || "",
+                            })
+                            setAvatarPreview(null)
+                            setAvatarFile(null)
+                          }}
+                          className="flex-1 px-4 py-3 border border-slate-200 text-slate-600 rounded-xl hover:bg-slate-50 font-medium transition-colors"
+                        >
+                          Hủy
+                        </button>
+                        <button
+                          onClick={handleSaveProfile}
+                          disabled={saving}
+                          className="flex-1 px-4 py-3 bg-[#dd7323] text-white rounded-xl hover:bg-[#c2621a] font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                        >
+                          {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+                          {saving ? "Đang lưu..." : "Lưu thay đổi"}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => setIsEditing(true)}
+                        className="px-6 py-3 bg-[#dd7323] text-white rounded-xl hover:bg-[#c2621a] font-medium transition-colors"
+                      >
+                        Chỉnh sửa thông tin
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {/* Old Password */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Mật khẩu hiện tại</label>
+                    <div className="relative">
+                      <input
+                        type={showPasswords.old ? "text" : "password"}
+                        value={passwordData.old_password}
+                        onChange={(e) => setPasswordData({ ...passwordData, old_password: e.target.value })}
+                        className="w-full px-4 py-3 pr-12 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all"
+                        placeholder="Nhập mật khẩu hiện tại"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswords({ ...showPasswords, old: !showPasswords.old })}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showPasswords.old ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* New Password */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Mật khẩu mới</label>
+                    <div className="relative">
+                      <input
+                        type={showPasswords.new ? "text" : "password"}
+                        value={passwordData.new_password}
+                        onChange={(e) => setPasswordData({ ...passwordData, new_password: e.target.value })}
+                        className="w-full px-4 py-3 pr-12 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all"
+                        placeholder="Nhập mật khẩu mới (ít nhất 8 ký tự)"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswords({ ...showPasswords, new: !showPasswords.new })}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showPasswords.new ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Confirm Password */}
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-2">Xác nhận mật khẩu mới</label>
+                    <div className="relative">
+                      <input
+                        type={showPasswords.confirm ? "text" : "password"}
+                        value={passwordData.confirm_password}
+                        onChange={(e) => setPasswordData({ ...passwordData, confirm_password: e.target.value })}
+                        className="w-full px-4 py-3 pr-12 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all"
+                        placeholder="Nhập lại mật khẩu mới"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPasswords({ ...showPasswords, confirm: !showPasswords.confirm })}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        {showPasswords.confirm ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                    {passwordData.confirm_password && passwordData.new_password !== passwordData.confirm_password && (
+                      <p className="mt-2 text-sm text-red-500 flex items-center gap-1">
+                        <AlertCircle size={14} /> Mật khẩu không khớp
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Submit */}
+                  <button
+                    onClick={handleChangePassword}
+                    disabled={
+                      changingPassword ||
+                      !passwordData.old_password ||
+                      !passwordData.new_password ||
+                      !passwordData.confirm_password
+                    }
+                    className="w-full px-4 py-3 bg-[#dd7323] text-white rounded-xl hover:bg-[#c2621a] font-medium transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {changingPassword ? <Loader2 size={18} className="animate-spin" /> : <Lock size={18} />}
+                    {changingPassword ? "Đang xử lý..." : "Đổi mật khẩu"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Role-specific info */}
+          {user?.role === "Student" && <StudentInfo />}
+          {user?.role === "Lecturer" && <LecturerInfo />}
+          {user?.role === "Admin" && <AdminInfo />}
+        </div>
+      </div>
     </div>
   )
 }

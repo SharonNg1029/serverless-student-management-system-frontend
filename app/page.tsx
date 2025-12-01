@@ -1,14 +1,12 @@
-import { redirect } from 'react-router'
-
-/**
- * Index Route (/)
- * 
- * Redirect to login page
- */
-export async function loader() {
-  return redirect('/login');
-}
+import { useEffect } from 'react'
+import { useNavigate } from 'react-router'
 
 export default function IndexPage() {
-  return null;
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    navigate('/login')
+  }, [])
+
+  return null
 }

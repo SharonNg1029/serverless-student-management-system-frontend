@@ -1,3 +1,5 @@
+'use client'
+
 import { Link, useLocation } from 'react-router'
 import { useState } from 'react'
 import { MessageCircle } from 'lucide-react'
@@ -24,26 +26,29 @@ export default function Navbar() {
           { label: 'Môn học', href: '/admin/subjects-management/list' },
           { label: 'Lớp học', href: '/admin/classes-management/list' },
           { label: 'Cấu hình', href: '/admin/settings' },
-          { label: 'Nhật ký', href: '/admin/audit-logs' },
+          { label: 'Nhật ký', href: '/admin/audit-logs' }
         ]
-      
+
       case 'Lecturer':
         return [
+          { label: 'Dashboard', href: '/lecturer/dashboard' },
           { label: 'Lớp học', href: '/lecturer/classes-management/list' },
           { label: 'Bài tập', href: '/lecturer/assignments-management/list' },
+          { label: 'Điểm số', href: '/lecturer/grades-management/list' },
           { label: 'Sinh viên', href: '/lecturer/students-management/list' },
           { label: 'Xếp hạng', href: '/lecturer/ranking-analyst' },
           { label: 'Báo cáo', href: '/lecturer/reports' },
+          { label: 'Thông báo', href: '/lecturer/notifications-send' }
         ]
-      
+
       case 'Student':
         return [
           { label: 'Dashboard', href: '/student/dashboard' },
           { label: 'Lớp của tôi', href: '/student/my-courses' },
           { label: 'Tất cả khóa học', href: '/student/all-courses' },
-          { label: 'Xếp hạng', href: '/student/ranking' },
+          { label: 'Xếp hạng', href: '/student/ranking' }
         ]
-      
+
       default:
         return []
     }
@@ -52,14 +57,14 @@ export default function Navbar() {
   const navItems = getNavItems()
 
   return (
-    <div className="navbar-wrapper">
-      <nav className="navbar">
-        <div className="navbar-container">
-          <Link to="/home" className="navbar-logo">
-            <img src="/Logo_AWS_FCJ.png" alt="LMS FCJ" style={{ height: '40px' }} />
+    <div className='navbar-wrapper'>
+      <nav className='navbar'>
+        <div className='navbar-container'>
+          <Link to='/home' className='navbar-logo'>
+            <img src='/Logo_AWS_FCJ.png' alt='LMS FCJ' style={{ height: '40px' }} />
           </Link>
-          
-          <div className="navbar-menu">
+
+          <div className='navbar-menu'>
             {navItems.map((item) => (
               <Link
                 key={item.href}
@@ -71,15 +76,18 @@ export default function Navbar() {
             ))}
           </div>
 
-          <div className="navbar-actions" style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '1rem'
-          }}>
+          <div
+            className='navbar-actions'
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '1rem'
+            }}
+          >
             {/* Chat icon */}
-            <button 
+            <button
               onClick={() => setIsChatOpen(!isChatOpen)}
-              title="Chat"
+              title='Chat'
               style={{
                 background: 'none',
                 border: 'none',
@@ -93,12 +101,12 @@ export default function Navbar() {
                 transition: 'all 0.3s ease'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = 'rgba(227, 130, 20, 0.1)';
-                e.currentTarget.style.color = '#e38214';
+                e.currentTarget.style.backgroundColor = 'rgba(227, 130, 20, 0.1)'
+                e.currentTarget.style.color = '#e38214'
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = 'transparent';
-                e.currentTarget.style.color = '#fff';
+                e.currentTarget.style.backgroundColor = 'transparent'
+                e.currentTarget.style.color = '#fff'
               }}
             >
               <MessageCircle size={20} />
@@ -114,11 +122,7 @@ export default function Navbar() {
       </nav>
 
       {/* Chat Sidebar */}
-      <ChatSidebar 
-        isOpen={isChatOpen}
-        onClose={() => setIsChatOpen(false)}
-      />
+      <ChatSidebar isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
     </div>
   )
 }
-

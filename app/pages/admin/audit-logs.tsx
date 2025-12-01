@@ -1,7 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { FileDown, Search, X, Loader2, Activity, User, Calendar, Filter, Shield } from 'lucide-react';
+import { createListCollection, Portal, Box, IconButton, Input, Group } from '@chakra-ui/react';
+import { Calendar as DatePicker } from 'react-date-range';
+import { vi } from 'date-fns/locale';
+import 'react-date-range/dist/styles.css';
+import 'react-date-range/dist/theme/default.css';
 import api from '../../utils/axios';
 import { toaster } from '../../components/ui/toaster';
+import { 
+  SelectRoot, 
+  SelectLabel, 
+  SelectTrigger, 
+  SelectValueText, 
+  SelectContent, 
+  SelectItem 
+} from '../../components/ui/select';
 
 // LogDTO from backend
 interface LogDTO {
@@ -34,31 +47,47 @@ export default function AuditLogsRoute() {
   const [loading, setLoading] = useState(true);
   
   // Filters
-  const [userId, setUserId] = useState('');
-  const [classId, setClassId] = useState('');
-  const [actionType, setActionType] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [searchText, setSearchText] = useState('');
+  const [actionType, setActionType] = useState<string[]>([]);
+  const [startDate, setStartDate] = useState<Date | undefined>();
+  const [endDate, setEndDate] = useState<Date | undefined>();
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const startDateRef = useRef<HTMLDivElement>(null);
+  const endDateRef = useRef<HTMLDivElement>(null);
+  
+  // Create collection for action types
+  const actionTypeCollection = useMemo(() => createListCollection({
+    items: [
+      { label: 'Tạo mới', value: 'CREATE' },
+      { label: 'Cập nhật', value: 'UPDATE' },
+      { label: 'Xóa', value: 'DELETE' },
+      { label: 'Đăng nhập', value: 'LOGIN' },
+      { label: 'Đăng xuất', value: 'LOGOUT' },
+      { label: 'Đăng ký', value: 'ENROLL' },
+      { label: 'Hủy đăng ký', value: 'UNENROLL' },
+    ],
+  }), []);
   
   // Debounced search
-  const [debouncedUserId, setDebouncedUserId] = useState('');
-  const [debouncedClassId, setDebouncedClassId] = useState('');
+  const [debouncedSearchText, setDebouncedSearchText] = useState('');
+  const [debouncedActionType, setDebouncedActionType] = useState<string[]>([]);
 
-  // Debounce userId
+  // Debounce searchText
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedUserId(userId);
+      setDebouncedSearchText(searchText);
     }, 500);
     return () => clearTimeout(timer);
-  }, [userId]);
-
-  // Debounce classId
+  }, [searchText]);
+  
+  // Debounce actionType
   useEffect(() => {
     const timer = setTimeout(() => {
-      setDebouncedClassId(classId);
+      setDebouncedActionType(actionType);
     }, 500);
     return () => clearTimeout(timer);
-  }, [classId]);
+  }, [actionType]);
 
   // Fetch logs from API
   const fetchLogs = async () => {
@@ -67,16 +96,28 @@ export default function AuditLogsRoute() {
       
       // Build query params
       const params: Record<string, string> = {};
-      if (debouncedUserId) params.user_id = debouncedUserId;
-      if (debouncedClassId) params.class_id = debouncedClassId;
-      if (actionType) params.action_type = actionType;
+      
+      // Parse search text - could be user_id or class_id
+      if (debouncedSearchText) {
+        const trimmed = debouncedSearchText.trim();
+        // Try to determine if it's a number (could be user_id or class_id)
+        if (!isNaN(Number(trimmed))) {
+          // If it's a number, search both user_id and class_id
+          // Backend should handle this or we can send as user_id
+          params.user_id = trimmed;
+        } else {
+          params.user_id = trimmed;
+        }
+      }
+      
+      if (debouncedActionType.length > 0) params.action_type = debouncedActionType[0];
       
       // Date range handling
-      if (startDate && endDate) {
-        params.start_date = startDate;
-        params.end_date = endDate;
-      } else if (startDate) {
-        params.timestamp = startDate;
+      if (startDate) {
+        params.start_date = startDate.toISOString().split('T')[0];
+      }
+      if (endDate) {
+        params.end_date = endDate.toISOString().split('T')[0];
       }
       
       const response = await api.get<{ results: LogDTO[] }>('/admin/audit-logs', { params });
@@ -126,19 +167,18 @@ export default function AuditLogsRoute() {
   // Load data when filters change
   useEffect(() => {
     fetchLogs();
-  }, [debouncedUserId, debouncedClassId, actionType, startDate, endDate]);
+  }, [debouncedSearchText, debouncedActionType, startDate, endDate]);
 
   // Handle clear filters
   const handleClearFilters = () => {
-    setUserId('');
-    setClassId('');
-    setActionType('');
-    setStartDate('');
-    setEndDate('');
+    setSearchText('');
+    setActionType([]);
+    setStartDate(undefined);
+    setEndDate(undefined);
   };
 
   // Check if any filter is active
-  const hasActiveFilters = userId || classId || actionType || startDate || endDate;
+  const hasActiveFilters = searchText || actionType.length > 0 || startDate || endDate;
 
   // Export logs to CSV
   const exportLogs = () => {
@@ -219,83 +259,200 @@ export default function AuditLogsRoute() {
           <h3 className="font-semibold text-slate-700">Bộ lọc</h3>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-          {/* User ID Filter */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* Search Filter (User ID or Class ID) */}
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              <User size={14} className="inline mr-1" />
-              User ID
+              <Search size={14} className="inline mr-1" />
+              Tìm kiếm
             </label>
             <input
               type="text"
-              placeholder="Nhập User ID..."
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#dd7323] focus:border-transparent text-sm"
-            />
-          </div>
-
-          {/* Class ID Filter */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Class ID
-            </label>
-            <input
-              type="text"
-              placeholder="Nhập Class ID..."
-              value={classId}
-              onChange={(e) => setClassId(e.target.value)}
+              placeholder="User ID hoặc Class ID..."
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#dd7323] focus:border-transparent text-sm"
             />
           </div>
 
           {/* Action Type Filter */}
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              <Activity size={14} className="inline mr-1" />
-              Hành động
-            </label>
-            <select
+            <SelectRoot 
+              collection={actionTypeCollection}
               value={actionType}
-              onChange={(e) => setActionType(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#dd7323] focus:border-transparent text-sm"
+              onValueChange={(e) => setActionType(e.value)}
+              size="sm"
             >
-              <option value="">Tất cả</option>
-              <option value="CREATE">Tạo mới</option>
-              <option value="UPDATE">Cập nhật</option>
-              <option value="DELETE">Xóa</option>
-              <option value="LOGIN">Đăng nhập</option>
-              <option value="LOGOUT">Đăng xuất</option>
-              <option value="ENROLL">Đăng ký</option>
-              <option value="UNENROLL">Hủy đăng ký</option>
-            </select>
+              <SelectLabel fontSize="sm" fontWeight="medium" color="slate.700" mb="1">
+                <Activity size={14} style={{ display: 'inline', marginRight: '4px' }} />
+                Hành động
+              </SelectLabel>
+              <SelectTrigger>
+                <SelectValueText placeholder="Tất cả" />
+              </SelectTrigger>
+              <SelectContent>
+                {actionTypeCollection.items.map((action) => (
+                  <SelectItem key={action.value} item={action}>
+                    {action.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </SelectRoot>
           </div>
 
           {/* Start Date Filter */}
-          <div>
+          <div ref={startDateRef} style={{ position: 'relative' }}>
             <label className="block text-sm font-medium text-slate-700 mb-1">
               <Calendar size={14} className="inline mr-1" />
-              Từ ngày
+              Ngày bắt đầu
             </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#dd7323] focus:border-transparent text-sm"
-            />
+            <Group attached w="full">
+              <Input
+                placeholder="Chọn ngày bắt đầu..."
+                value={startDate ? startDate.toLocaleDateString('vi-VN') : ''}
+                readOnly
+                onClick={() => setShowStartDatePicker(true)}
+                cursor="pointer"
+                size="sm"
+                borderColor="slate.300"
+                _hover={{ borderColor: 'slate.400' }}
+                _focus={{ borderColor: '#dd7323', boxShadow: '0 0 0 1px #dd7323' }}
+              />
+              {startDate ? (
+                <IconButton
+                  aria-label="Clear start date"
+                  size="sm"
+                  variant="ghost"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setStartDate(undefined);
+                  }}
+                >
+                  <X size={14} />
+                </IconButton>
+              ) : (
+                <Box px="3" display="flex" alignItems="center" cursor="pointer" onClick={() => setShowStartDatePicker(true)}>
+                  <Calendar size={14} className="text-slate-400" />
+                </Box>
+              )}
+            </Group>
+            {showStartDatePicker && (
+              <Portal>
+                <Box
+                  position="fixed"
+                  zIndex={9999}
+                  bg="white"
+                  borderRadius="md"
+                  boxShadow="lg"
+                  border="1px solid"
+                  borderColor="slate.200"
+                  p={3}
+                  style={{
+                    top: startDateRef.current ? startDateRef.current.getBoundingClientRect().bottom + 5 : 0,
+                    left: startDateRef.current ? startDateRef.current.getBoundingClientRect().left : 0,
+                  }}
+                >
+                  <DatePicker
+                    date={startDate || new Date()}
+                    onChange={(date) => {
+                      setStartDate(date);
+                      setShowStartDatePicker(false);
+                    }}
+                    maxDate={endDate || new Date()}
+                    locale={vi}
+                    color="#dd7323"
+                  />
+                  <Box display="flex" justifyContent="flex-end" mt={2} gap={2}>
+                    <IconButton
+                      aria-label="Close"
+                      size="xs"
+                      variant="ghost"
+                      onClick={() => setShowStartDatePicker(false)}
+                    >
+                      <X size={14} />
+                    </IconButton>
+                  </Box>
+                </Box>
+              </Portal>
+            )}
           </div>
 
           {/* End Date Filter */}
-          <div>
+          <div ref={endDateRef} style={{ position: 'relative' }}>
             <label className="block text-sm font-medium text-slate-700 mb-1">
-              Đến ngày
+              <Calendar size={14} className="inline mr-1" />
+              Ngày kết thúc
             </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#dd7323] focus:border-transparent text-sm"
-            />
+            <Group attached w="full">
+              <Input
+                placeholder="Chọn ngày kết thúc..."
+                value={endDate ? endDate.toLocaleDateString('vi-VN') : ''}
+                readOnly
+                onClick={() => setShowEndDatePicker(true)}
+                cursor="pointer"
+                size="sm"
+                borderColor="slate.300"
+                _hover={{ borderColor: 'slate.400' }}
+                _focus={{ borderColor: '#dd7323', boxShadow: '0 0 0 1px #dd7323' }}
+              />
+              {endDate ? (
+                <IconButton
+                  aria-label="Clear end date"
+                  size="sm"
+                  variant="ghost"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEndDate(undefined);
+                  }}
+                >
+                  <X size={14} />
+                </IconButton>
+              ) : (
+                <Box px="3" display="flex" alignItems="center" cursor="pointer" onClick={() => setShowEndDatePicker(true)}>
+                  <Calendar size={14} className="text-slate-400" />
+                </Box>
+              )}
+            </Group>
+            {showEndDatePicker && (
+              <Portal>
+                <Box
+                  position="fixed"
+                  zIndex={9999}
+                  bg="white"
+                  borderRadius="md"
+                  boxShadow="lg"
+                  border="1px solid"
+                  borderColor="slate.200"
+                  p={3}
+                  style={{
+                    top: endDateRef.current ? endDateRef.current.getBoundingClientRect().bottom + 5 : 0,
+                    left: endDateRef.current ? endDateRef.current.getBoundingClientRect().left : 0,
+                  }}
+                >
+                  <DatePicker
+                    date={endDate || new Date()}
+                    onChange={(date) => {
+                      setEndDate(date);
+                      setShowEndDatePicker(false);
+                    }}
+                    minDate={startDate}
+                    maxDate={new Date()}
+                    locale={vi}
+                    color="#dd7323"
+                  />
+                  <Box display="flex" justifyContent="flex-end" mt={2} gap={2}>
+                    <IconButton
+                      aria-label="Close"
+                      size="xs"
+                      variant="ghost"
+                      onClick={() => setShowEndDatePicker(false)}
+                    >
+                      <X size={14} />
+                    </IconButton>
+                  </Box>
+                </Box>
+              </Portal>
+            )}
           </div>
         </div>
 

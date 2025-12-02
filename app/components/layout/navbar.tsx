@@ -32,13 +32,7 @@ export default function Navbar() {
       case 'Lecturer':
         return [
           { label: 'Dashboard', href: '/lecturer/dashboard' },
-          { label: 'Lớp học', href: '/lecturer/classes-management/list' },
-          { label: 'Bài tập', href: '/lecturer/assignments-management/list' },
-          { label: 'Điểm số', href: '/lecturer/grades-management/list' },
-          { label: 'Sinh viên', href: '/lecturer/students-management/list' },
-          { label: 'Xếp hạng', href: '/lecturer/ranking-analyst' },
-          { label: 'Báo cáo', href: '/lecturer/reports' },
-          { label: 'Thông báo', href: '/lecturer/notifications-send' }
+          { label: 'Lớp học của tôi', href: '/lecturer/my-courses' }
         ]
 
       case 'Student':

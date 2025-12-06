@@ -26,6 +26,7 @@ interface UserDTO {
   role: string
   codeUser?: string | null
   avatar?: string | null
+  status?: number // 1 = active, 0 = banned
 }
 
 const UsersList: React.FC = () => {
@@ -68,7 +69,7 @@ const UsersList: React.FC = () => {
       role_id: role_id,
       role_name: dto.role?.toLowerCase() || 'student',
       date_of_birth: dto.dateOfBirth,
-      status: 1,
+      status: dto.status ?? 1, // Lấy status từ API, mặc định 1 nếu không có
       created_at: new Date().toISOString(),
       avatar: dto.avatar
     }
@@ -219,31 +220,41 @@ const UsersList: React.FC = () => {
     }
   ]
 
-  // Handle ban/unban user
+  // Handle ban user - API: PATCH /api/admin/users/deactivate/{id}
+  // Lưu ý: API dùng userId (user.id), không phải codeUser
   const handleBanUser = async (user: UserDisplay) => {
-    const newStatus = user.status === 1 ? 0 : 1
-    const action = newStatus === 0 ? 'khóa' : 'mở khóa'
+    // Chỉ hỗ trợ khóa tài khoản (deactivate), không có API mở khóa
+    if (user.status === 0) {
+      toaster.create({
+        title: 'Thông báo',
+        description: 'Tài khoản này đã bị khóa trước đó.',
+        type: 'info'
+      })
+      return
+    }
 
-    if (!confirm(`Bạn có chắc muốn ${action} tài khoản "${user.name}"?`)) {
+    if (!confirm(`Bạn có chắc muốn khóa tài khoản "${user.name}" (${user.codeUser})?`)) {
       return
     }
 
     try {
-      // TODO: Call API to ban/unban user
-      // await api.patch(`/api/admin/users/${user.id}/status`, { status: newStatus })
+      // === GỌI API PATCH /api/admin/users/deactivate/{id} ===
+      // Sử dụng user.id (userId từ API response)
+      await api.patch(`/api/admin/users/deactivate/${user.id}`)
 
       toaster.create({
         title: 'Thành công',
-        description: `Đã ${action} tài khoản "${user.name}"`,
+        description: `Đã khóa tài khoản "${user.name}"`,
         type: 'success'
       })
 
       // Refresh list
       fetchUsers()
     } catch (error: any) {
+      console.error('Error banning user:', error)
       toaster.create({
         title: 'Lỗi',
-        description: error.response?.data?.message || `Không thể ${action} tài khoản`,
+        description: error.response?.data?.message || 'Không thể khóa tài khoản',
         type: 'error'
       })
     }

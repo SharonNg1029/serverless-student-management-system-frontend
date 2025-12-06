@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router'
+import { useNavigate, useLocation } from 'react-router'
 import { Save, ArrowLeft, BookOpen, Key, Calendar, Loader2 } from 'lucide-react'
 import api from '../../../utils/axios'
 import { toaster } from '../../../components/ui/toaster'
@@ -11,12 +11,23 @@ interface LecturerDTO {
   fullName?: string
 }
 
+// Subject interface from API
+interface SubjectDTO {
+  id: string
+  name: string
+  status?: number
+}
+
 const CreateClass: React.FC = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const [isLoading, setIsLoading] = useState(false)
-  const [loadingLecturers, setLoadingLecturers] = useState(false)
+  const [loadingSubjects, setLoadingSubjects] = useState(false)
 
-  const [lecturers, setLecturers] = useState<LecturerDTO[]>([])
+  // Nhận lecturers từ list page (không cần call API)
+  const lecturersFromState = location.state?.lecturers as LecturerDTO[] | undefined
+  const [lecturers] = useState<LecturerDTO[]>(lecturersFromState || [])
+  const [subjects, setSubjects] = useState<SubjectDTO[]>([])
 
   // Form data theo API spec
   const [formData, setFormData] = useState({
@@ -26,51 +37,63 @@ const CreateClass: React.FC = () => {
     academicYear: '2025-2026',
     description: '',
     teacherId: '',
+    subjectId: '',
     status: 1
   })
 
-  // Load lecturers (role_id = 2) - giống như edit page
+  // Load subjects từ API
   useEffect(() => {
-    const fetchLecturers = async () => {
+    const fetchSubjects = async () => {
       try {
-        setLoadingLecturers(true)
-        const response = await api.get('/api/admin/users', {
-          params: { role_id: 2 }
-        })
-        console.log('=== LECTURERS API RESPONSE ===', response.data)
+        setLoadingSubjects(true)
+        const response = await api.get('/api/admin/subjects')
+        console.log('=== SUBJECTS API RESPONSE ===', response.data)
 
         // Handle different response formats
-        let lecturerData: any[] = []
+        let subjectData: any[] = []
         if (Array.isArray(response.data)) {
-          lecturerData = response.data
+          subjectData = response.data
         } else if (response.data?.results) {
-          lecturerData = response.data.results
+          subjectData = response.data.results
         } else if (response.data?.data) {
-          lecturerData = response.data.data
+          subjectData = response.data.data
         }
 
-        // Transform to LecturerDTO format
-        const transformedLecturers: LecturerDTO[] = lecturerData.map((l: any) => ({
-          id: l.id || l.codeUser,
-          name: l.name || l.fullName || 'Unknown',
-          fullName: l.fullName || l.name || 'Unknown'
-        }))
+        // Transform và chỉ lấy subjects đang active (status = 1)
+        const transformedSubjects: SubjectDTO[] = subjectData
+          .filter((s: any) => s.status === 1 || s.status === undefined)
+          .map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            status: s.status
+          }))
 
-        console.log('=== TRANSFORMED LECTURERS ===', transformedLecturers)
-        setLecturers(transformedLecturers)
+        console.log('=== TRANSFORMED SUBJECTS ===', transformedSubjects)
+        setSubjects(transformedSubjects)
       } catch (error: any) {
-        console.error('Error fetching lecturers:', error)
+        console.error('Error fetching subjects:', error)
         toaster.create({
           title: 'Lỗi',
-          description: 'Không thể tải danh sách giảng viên',
+          description: 'Không thể tải danh sách học phần',
           type: 'error'
         })
       } finally {
-        setLoadingLecturers(false)
+        setLoadingSubjects(false)
       }
     }
 
-    fetchLecturers()
+    fetchSubjects()
+  }, [])
+
+  // Nếu không có lecturers từ state, hiển thị thông báo
+  useEffect(() => {
+    if (!lecturersFromState || lecturersFromState.length === 0) {
+      toaster.create({
+        title: 'Thông báo',
+        description: 'Vui lòng truy cập từ trang danh sách lớp học để có dữ liệu giảng viên.',
+        type: 'warning'
+      })
+    }
   }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -81,6 +104,15 @@ const CreateClass: React.FC = () => {
       toaster.create({
         title: 'Lỗi',
         description: 'Vui lòng nhập tên lớp!',
+        type: 'error'
+      })
+      return
+    }
+
+    if (!formData.subjectId) {
+      toaster.create({
+        title: 'Lỗi',
+        description: 'Vui lòng chọn học phần!',
         type: 'error'
       })
       return
@@ -111,16 +143,17 @@ const CreateClass: React.FC = () => {
         name: formData.name.trim().toUpperCase(),
         password: formData.password.trim(),
         semester: formData.semester,
-        academicYear: formData.academicYear.trim(),
+        academic_year: formData.academicYear.trim(),
         description: formData.description.trim(),
         teacherId: formData.teacherId,
+        subject_id: formData.subjectId,
         status: formData.status
       }
 
       console.log('Creating class with payload:', payload)
 
-      // === GỌI API POST /api/admin/classes ===
-      const response = await api.post('/api/admin/classes', payload)
+      // === GỌI API POST /api/admin/createClass ===
+      const response = await api.post('/api/admin/createClass', payload)
 
       console.log('Create response:', response.data)
 
@@ -185,6 +218,33 @@ const CreateClass: React.FC = () => {
               />
             </div>
 
+            {/* Học phần (Subject) */}
+            <div className='md:col-span-2'>
+              <label className='block text-sm font-bold text-slate-700 mb-2'>
+                Học phần <span className='text-red-500'>*</span>
+              </label>
+              <select
+                required
+                disabled={loadingSubjects}
+                className='w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed'
+                value={formData.subjectId}
+                onChange={(e) => setFormData({ ...formData, subjectId: e.target.value })}
+              >
+                <option value=''>-- Chọn học phần --</option>
+                {subjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.id} - {subject.name}
+                  </option>
+                ))}
+              </select>
+              {loadingSubjects && (
+                <p className='text-xs text-slate-500 mt-1 flex items-center gap-1'>
+                  <Loader2 size={12} className='animate-spin' />
+                  Đang tải học phần...
+                </p>
+              )}
+            </div>
+
             {/* Học kỳ */}
             <div>
               <label className='block text-sm font-bold text-slate-700 mb-2'>Học kỳ</label>
@@ -224,7 +284,7 @@ const CreateClass: React.FC = () => {
               </label>
               <select
                 required
-                disabled={loadingLecturers}
+                disabled={lecturers.length === 0}
                 className='w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed'
                 value={formData.teacherId}
                 onChange={(e) => setFormData({ ...formData, teacherId: e.target.value })}
@@ -236,10 +296,9 @@ const CreateClass: React.FC = () => {
                   </option>
                 ))}
               </select>
-              {loadingLecturers && (
-                <p className='text-xs text-slate-500 mt-1 flex items-center gap-1'>
-                  <Loader2 size={12} className='animate-spin' />
-                  Đang tải giảng viên...
+              {lecturers.length === 0 && (
+                <p className='text-xs text-amber-600 mt-1'>
+                  Không có dữ liệu giảng viên. Vui lòng quay lại danh sách lớp học.
                 </p>
               )}
             </div>
@@ -254,7 +313,7 @@ const CreateClass: React.FC = () => {
                 type='text'
                 required
                 minLength={4}
-                className='w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all font-mono tracking-widest'
+                className='w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all font-mono tracking-widest bg-white'
                 value={formData.password}
                 placeholder='VD: 123456'
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}

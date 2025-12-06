@@ -378,7 +378,7 @@ const ClassesList: React.FC = () => {
           subtitle='Danh sách và thông tin các lớp học.'
           data={classes}
           columns={columns}
-          onAdd={() => navigate('/admin/classes-management/create')}
+          onAdd={() => navigate('/admin/classes-management/create', { state: { lecturers } })}
           onEdit={handleEditClass}
           onDelete={handleDeactivateClass}
           deleteLabel='Đóng lớp'

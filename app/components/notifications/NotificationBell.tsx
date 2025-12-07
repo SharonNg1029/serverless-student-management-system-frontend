@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Bell } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
+import { useNotificationUIStore } from '../../store/notificationUIStore'
 import api from '../../utils/axios'
 
 // ============================================
@@ -48,10 +49,11 @@ const mapNotificationType = (type?: string): 'info' | 'warning' | 'success' | 'e
 
 export default function NotificationBell({ variant }: NotificationBellProps) {
   const [notifications, setNotifications] = useState<Notification[]>([])
-  const [isOpen, setIsOpen] = useState(false)
+  const { isOpen, toggleNotificationPanel, closeNotificationPanel } = useNotificationUIStore()
   const [unreadCount, setUnreadCount] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
   const { user } = useAuthStore()
+  const dropdownRef = useRef<HTMLDivElement>(null)
 
   // Auto-detect variant based on user role if not specified
   const effectiveVariant = variant ?? (user?.role === 'Admin' ? 'light' : 'dark')
@@ -68,9 +70,6 @@ export default function NotificationBell({ variant }: NotificationBellProps) {
       // === GỌI API GET /api/notifications ===
       const response = await api.get<{ results: NotificationFromAPI[] }>('/api/notifications')
 
-      // === DEBUG: Log response để xem cấu trúc data ===
-      console.log('=== NOTIFICATION API RESPONSE ===', response.data)
-
       // Map API response to local format
       const mappedNotifications: Notification[] = (response.data.results || []).map((n) => ({
         id: String(n.id),
@@ -83,7 +82,7 @@ export default function NotificationBell({ variant }: NotificationBellProps) {
 
       setNotifications(mappedNotifications)
     } catch (error) {
-      console.error('Failed to fetch notifications:', error)
+      // Silently fail - notifications are not critical
     } finally {
       setIsLoading(false)
     }
@@ -99,6 +98,23 @@ export default function NotificationBell({ variant }: NotificationBellProps) {
     return () => clearInterval(interval)
   }, [fetchNotifications])
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        closeNotificationPanel()
+      }
+    }
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isOpen, closeNotificationPanel])
+
   useEffect(() => {
     const count = notifications.filter((n) => !n.read).length
     setUnreadCount(count)
@@ -113,7 +129,6 @@ export default function NotificationBell({ variant }: NotificationBellProps) {
       await api.patch(`/api/notifications/${notificationId}/read`)
       setNotifications(notifications.map((n) => (n.id === notificationId ? { ...n, read: true } : n)))
     } catch (error) {
-      console.error('Failed to mark as read:', error)
       // Vẫn update UI dù API fail
       setNotifications(notifications.map((n) => (n.id === notificationId ? { ...n, read: true } : n)))
     }
@@ -128,16 +143,15 @@ export default function NotificationBell({ variant }: NotificationBellProps) {
       await api.patch('/api/notifications/read-all')
       setNotifications(notifications.map((n) => ({ ...n, read: true })))
     } catch (error) {
-      console.error('Failed to mark all as read:', error)
       // Vẫn update UI dù API fail
       setNotifications(notifications.map((n) => ({ ...n, read: true })))
     }
   }
 
   return (
-    <div className='relative'>
+    <div className='relative' ref={dropdownRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={toggleNotificationPanel}
         className={`relative p-2.5 rounded-full cursor-pointer transition-colors group ${
           isDark ? 'hover:bg-[rgba(227,130,20,0.1)]' : 'hover:bg-slate-100'
         }`}

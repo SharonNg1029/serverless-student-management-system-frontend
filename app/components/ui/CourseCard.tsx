@@ -1,9 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Button,
-  Card,
   Text,
   HStack,
   VStack,
@@ -13,10 +12,30 @@ import {
   CloseButton,
   IconButton,
   Box,
-  Icon,
-  Separator
+  Icon
 } from '@chakra-ui/react'
-import { BookOpen, Users, LogOut, Eye, Calendar } from 'lucide-react'
+import { BookOpen, Users, LogOut, Eye, Calendar, Key } from 'lucide-react'
+
+// Background gradients matching SubjectClassCard
+const CARD_BACKGROUNDS = [
+  'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+  'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+  'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+  'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+  'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+  'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
+  'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
+  'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)'
+]
+
+// Get consistent background based on classId hash
+function getBackgroundIndex(classId: string): number {
+  let hash = 0
+  for (let i = 0; i < classId.length; i++) {
+    hash = classId.charCodeAt(i) + ((hash << 5) - hash)
+  }
+  return Math.abs(hash) % CARD_BACKGROUNDS.length
+}
 
 export interface EnrolledClass {
   classId: string
@@ -37,6 +56,9 @@ export default function CourseCard({ course, onViewDetails, onUnenroll }: Course
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isUnenrolling, setIsUnenrolling] = useState(false)
 
+  const backgroundIndex = useMemo(() => getBackgroundIndex(course.classId), [course.classId])
+  const background = CARD_BACKGROUNDS[backgroundIndex]
+
   const handleUnenroll = async () => {
     setIsUnenrolling(true)
     try {
@@ -51,93 +73,112 @@ export default function CourseCard({ course, onViewDetails, onUnenroll }: Course
 
   return (
     <>
-      <Card.Root
-        variant='elevated'
-        overflow='hidden'
-        _hover={{ shadow: 'xl', transform: 'translateY(-4px)' }}
-        transition='all 0.2s ease-in-out'
-        borderRadius='xl'
+      <Box
         w='full'
-        maxW='360px'
+        maxW='320px'
+        borderRadius='xl'
+        overflow='hidden'
+        shadow='md'
+        transition='all 0.2s'
+        _hover={{ shadow: 'xl', transform: 'translateY(-4px)' }}
+        bg='white'
       >
-        {/* Header with gradient */}
-        <Card.Header p={4} bgGradient='to-r' gradientFrom='orange.500' gradientTo='orange.400' color='white'>
-          <HStack justifyContent='space-between' alignItems='flex-start' w='full'>
-            <VStack alignItems='flex-start' gap={1} flex={1}>
-              <Card.Title fontSize='lg' fontWeight='bold' color='white' lineClamp={2}>
-                {course.subjectName}
-              </Card.Title>
-              <Card.Description fontSize='sm' color='whiteAlpha.900'>
-                {course.classId}
-              </Card.Description>
-            </VStack>
-            <Badge colorPalette='green' variant='solid' size='sm' borderRadius='full'>
-              Enrolled
-            </Badge>
-          </HStack>
-        </Card.Header>
-
-        {/* Body */}
-        <Card.Body gap={4} p={4}>
-          <HStack gap={3} color='fg.muted' flexWrap='wrap'>
-            <HStack gap={2}>
-              <Icon asChild color='orange.500'>
-                <Users size={16} />
-              </Icon>
-              <Text fontSize='sm' fontWeight='medium'>
-                {course.lecturerName}
-              </Text>
-            </HStack>
-
-            <Separator orientation='vertical' height='4' />
-
-            <HStack gap={2}>
-              <Icon asChild color='blue.500'>
-                <BookOpen size={16} />
-              </Icon>
-              <Text fontSize='sm'>{course.totalStudents} students</Text>
-            </HStack>
-          </HStack>
-
-          {course.enrolledAt && (
-            <HStack gap={2} color='fg.muted'>
-              <Icon asChild color='gray.500'>
-                <Calendar size={14} />
-              </Icon>
-              <Text fontSize='xs'>Enroll Date: {new Date(course.enrolledAt).toLocaleDateString('vi-VN')}</Text>
-            </HStack>
-          )}
-        </Card.Body>
-
-        {/* Footer */}
-        <Card.Footer p={4} pt={0} gap={2}>
-          <Button
-            bg='orange.400'
+        {/* Card Image Area with gradient */}
+        <Box h='140px' position='relative' bgGradient={background}>
+          {/* Subject Badge */}
+          <Box
+            position='absolute'
+            top={3}
+            left={3}
+            bg='#dd7323'
             color='white'
-            flex={1}
-            size='sm'
-            borderRadius='lg'
-            _hover={{ bg: 'orange.500' }}
-            onClick={() => onViewDetails(course.classId)}
+            px={3}
+            py={1}
+            borderRadius='md'
+            fontSize='xs'
+            fontWeight='semibold'
+            maxW='200px'
+            truncate
           >
-            <Eye size={16} />
-            View Details
-          </Button>
-          <IconButton
-            aria-label='Unenroll'
-            bg='white'
-            color='red.500'
-            border='1px solid'
-            borderColor='gray.200'
+            {course.subjectName}
+          </Box>
+
+          {/* Enrolled Badge */}
+          <Badge
+            position='absolute'
+            top={3}
+            right={3}
+            colorPalette='green'
+            variant='solid'
             size='sm'
-            borderRadius='lg'
-            _hover={{ bg: 'red.50', borderColor: 'red.200' }}
-            onClick={() => setIsDialogOpen(true)}
+            borderRadius='full'
           >
-            <LogOut size={16} />
-          </IconButton>
-        </Card.Footer>
-      </Card.Root>
+            Enrolled
+          </Badge>
+
+          {/* Key Icon */}
+          <Box position='absolute' bottom={3} right={3} bg='white' p={2} borderRadius='full' shadow='md'>
+            <Icon asChild color='#dd7323'>
+              <Key size={18} />
+            </Icon>
+          </Box>
+        </Box>
+
+        {/* Card Content */}
+        <Box p={4}>
+          {/* Class ID and Lecturer */}
+          <Text fontSize='sm' color='#dd7323' fontWeight='semibold' mb={2}>
+            {course.classId} - {course.lecturerName}
+          </Text>
+
+          {/* Stats */}
+          <HStack gap={4} mb={3} color='gray.600' fontSize='sm'>
+            <HStack gap={1}>
+              <Icon asChild color='gray.400'>
+                <Users size={14} />
+              </Icon>
+              <Text>{course.totalStudents} SV</Text>
+            </HStack>
+            {course.enrolledAt && (
+              <HStack gap={1}>
+                <Icon asChild color='gray.400'>
+                  <Calendar size={14} />
+                </Icon>
+                <Text>{new Date(course.enrolledAt).toLocaleDateString('vi-VN')}</Text>
+              </HStack>
+            )}
+          </HStack>
+
+          {/* Actions */}
+          <HStack gap={2}>
+            <Button
+              bg='#dd7323'
+              color='white'
+              flex={1}
+              size='sm'
+              borderRadius='lg'
+              _hover={{ bg: '#c5651f' }}
+              onClick={() => onViewDetails(course.classId)}
+            >
+              <Eye size={16} />
+              Xem chi tiết
+            </Button>
+            <IconButton
+              aria-label='Unenroll'
+              bg='white'
+              color='red.500'
+              border='1px solid'
+              borderColor='gray.200'
+              size='sm'
+              borderRadius='lg'
+              _hover={{ bg: 'red.50', borderColor: 'red.200' }}
+              onClick={() => setIsDialogOpen(true)}
+            >
+              <LogOut size={16} />
+            </IconButton>
+          </HStack>
+        </Box>
+      </Box>
 
       {/* Unenroll Confirmation Dialog */}
       <Dialog.Root

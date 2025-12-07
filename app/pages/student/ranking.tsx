@@ -1,7 +1,23 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Trophy, TrendingUp, Award, Loader2 } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { Trophy, TrendingUp, Award } from 'lucide-react'
+import {
+  Box,
+  Text,
+  VStack,
+  HStack,
+  Card,
+  Circle,
+  Spinner,
+  Grid,
+  NativeSelect
+} from '@chakra-ui/react'
+import api from '../../utils/axios'
+import { ErrorDisplay } from '../../components/ui/ErrorDisplay'
+import PageHeader from '../../components/ui/PageHeader'
+import StatsCard from '../../components/ui/StatsCard'
+import EmptyState from '../../components/ui/EmptyState'
 
 interface RankingData {
   rank: number
@@ -17,177 +33,243 @@ interface ClassOption {
   code: string
 }
 
-const MOCK_CLASSES: ClassOption[] = [
-  { id: 1, name: 'Lập trình Web 101', code: 'C001' },
-  { id: 2, name: 'Cơ sở dữ liệu', code: 'D001' },
-  { id: 3, name: 'Kiến trúc máy tính', code: 'A001' },
-  { id: 4, name: 'Lập trình OOP', code: 'C002' },
-  { id: 5, name: 'Mạng máy tính', code: 'N001' }
-]
+interface EnrolledClassFromAPI {
+  class_id: number
+  name: string
+  subject_name?: string
+}
 
-const MOCK_RANKINGS: Record<number, RankingData> = {
-  1: { rank: 5, score: 8.5, totalStudents: 35, className: 'Lập trình Web 101', classCode: 'C001' },
-  2: { rank: 2, score: 9.0, totalStudents: 32, className: 'Cơ sở dữ liệu', classCode: 'D001' },
-  3: { rank: 8, score: 7.8, totalStudents: 28, className: 'Kiến trúc máy tính', classCode: 'A001' },
-  4: { rank: 3, score: 8.9, totalStudents: 40, className: 'Lập trình OOP', classCode: 'C002' },
-  5: { rank: 1, score: 9.5, totalStudents: 30, className: 'Mạng máy tính', classCode: 'N001' }
+interface RankingFromAPI {
+  rank: number
+  score: number
+  total_students: number
+  class_name?: string
+  class_id?: number
 }
 
 export default function RankingRoute() {
-  const [selectedClassId, setSelectedClassId] = useState<number>(1)
+  const [classes, setClasses] = useState<ClassOption[]>([])
+  const [selectedClassId, setSelectedClassId] = useState<number | null>(null)
   const [ranking, setRanking] = useState<RankingData | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [rankingLoading, setRankingLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchRanking(selectedClassId)
-  }, [selectedClassId])
-
-  const fetchRanking = async (classId: number) => {
+  // Fetch enrolled classes
+  const fetchEnrolledClasses = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
-      // TODO: Replace with API call
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      setRanking(MOCK_RANKINGS[classId] || MOCK_RANKINGS[1])
-    } catch (error) {
-      console.error('Failed to fetch ranking:', error)
+      const response = await api.get<{ results: EnrolledClassFromAPI[] }>('/api/student/classes/class-enrolled')
+      const enrolledClasses = response.data?.results || []
+
+      const mappedClasses: ClassOption[] = enrolledClasses.map((c) => ({
+        id: c.class_id,
+        name: c.subject_name || c.name,
+        code: c.name
+      }))
+
+      setClasses(mappedClasses)
+
+      // Auto-select first class
+      if (mappedClasses.length > 0) {
+        setSelectedClassId(mappedClasses[0].id)
+      }
+    } catch (err) {
+      console.error('Failed to fetch enrolled classes:', err)
+      setError('Không thể tải danh sách lớp học. Vui lòng thử lại.')
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
+
+  // Fetch ranking for selected class
+  const fetchRanking = useCallback(
+    async (classId: number) => {
+      setRankingLoading(true)
+      try {
+        const response = await api.get<RankingFromAPI>(`/student/ranking/${classId}`)
+        const data = response.data
+
+        const selectedClass = classes.find((c) => c.id === classId)
+
+        setRanking({
+          rank: data.rank || 0,
+          score: data.score || 0,
+          totalStudents: data.total_students || 0,
+          className: selectedClass?.name || data.class_name || '',
+          classCode: selectedClass?.code || String(classId)
+        })
+      } catch (err) {
+        console.error('Failed to fetch ranking:', err)
+        setRanking(null)
+      } finally {
+        setRankingLoading(false)
+      }
+    },
+    [classes]
+  )
+
+  useEffect(() => {
+    fetchEnrolledClasses()
+  }, [fetchEnrolledClasses])
+
+  useEffect(() => {
+    if (selectedClassId) {
+      fetchRanking(selectedClassId)
+    }
+  }, [selectedClassId, fetchRanking])
 
   const getRankingBadge = (rank: number) => {
-    if (rank === 1) return '🥇'
+    if (rank === 1) return '�'
     if (rank === 2) return '🥈'
     if (rank === 3) return '🥉'
     return '📍'
   }
 
-  const getRankingColor = (rank: number, total: number) => {
-    const percentage = (rank / total) * 100
-    if (percentage <= 10) return 'from-yellow-400 to-yellow-600'
-    if (percentage <= 30) return 'from-green-400 to-green-600'
-    if (percentage <= 60) return 'from-blue-400 to-blue-600'
-    return 'from-slate-400 to-slate-600'
+  if (loading) {
+    return (
+      <Box minH='60vh' display='flex' alignItems='center' justifyContent='center' bg='white'>
+        <VStack gap={3}>
+          <Spinner size='xl' color='#dd7323' borderWidth='4px' />
+          <Text color='gray.600'>Đang tải danh sách lớp...</Text>
+        </VStack>
+      </Box>
+    )
   }
 
-  if (loading && !ranking) {
+  if (error) {
+    return <ErrorDisplay variant='fetch' message={error} onRetry={fetchEnrolledClasses} />
+  }
+
+  if (classes.length === 0) {
     return (
-      <div className='min-h-[60vh] flex items-center justify-center'>
-        <div className='text-center'>
-          <Loader2 size={40} className='text-[#dd7323] animate-spin mx-auto mb-3' />
-          <p className='text-slate-600'>Đang tải xếp hạng...</p>
-        </div>
-      </div>
+      <Box w='full' py={8} px={{ base: 4, sm: 6, lg: 8 }} bg='white' minH='100vh'>
+        <Box maxW='4xl' mx='auto'>
+          <PageHeader icon={Trophy} title='Xếp hạng cá nhân' subtitle='Xem xếp hạng của bạn trong từng lớp học' />
+          <Box px={6}>
+            <EmptyState icon={Trophy} title='Bạn chưa đăng ký lớp học nào' description='Hãy đăng ký lớp học để xem xếp hạng' />
+          </Box>
+        </Box>
+      </Box>
     )
   }
 
   return (
-    <div className='w-full py-8 px-4 sm:px-6 lg:px-8 bg-slate-50'>
-      <div className='max-w-4xl mx-auto'>
+    <Box w='full' py={8} px={{ base: 4, sm: 6, lg: 8 }} bg='white' minH='100vh'>
+      <Box maxW='4xl' mx='auto'>
         {/* Header */}
-        <div className='mb-8'>
-          <h1 className='text-3xl font-bold text-slate-900'>Xếp hạng cá nhân</h1>
-          <p className='text-slate-600 mt-1'>Xem xếp hạng của bạn trong từng lớp học</p>
-        </div>
+        <PageHeader icon={Trophy} title='Xếp hạng cá nhân' subtitle='Xem xếp hạng của bạn trong từng lớp học' />
 
         {/* Class Selection */}
-        <div className='bg-white rounded-xl shadow-sm border border-slate-200 p-6 mb-6'>
-          <label className='block text-sm font-semibold text-slate-700 mb-3'>Chọn lớp học</label>
-          <select
-            value={selectedClassId}
-            onChange={(e) => setSelectedClassId(Number(e.target.value))}
-            className='w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none'
-          >
-            {MOCK_CLASSES.map((cls) => (
-              <option key={cls.id} value={cls.id}>
-                {cls.name} ({cls.code})
-              </option>
-            ))}
-          </select>
-        </div>
+        <Box px={6} mb={6}>
+          <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.200' shadow='sm'>
+            <Card.Body p={6}>
+              <Text fontSize='sm' fontWeight='semibold' color='gray.700' mb={3}>
+                Chọn lớp học
+              </Text>
+              <NativeSelect.Root size='lg'>
+                <NativeSelect.Field
+                  value={selectedClassId || ''}
+                  onChange={(e) => setSelectedClassId(Number(e.target.value))}
+                  bg='orange.50'
+                  borderColor='orange.200'
+                  borderRadius='xl'
+                  _hover={{ borderColor: '#dd7323' }}
+                  _focus={{ borderColor: '#dd7323', boxShadow: '0 0 0 1px #dd7323' }}
+                >
+                  {classes.map((cls) => (
+                    <option key={cls.id} value={cls.id}>
+                      {cls.name} ({cls.code})
+                    </option>
+                  ))}
+                </NativeSelect.Field>
+                <NativeSelect.Indicator color='#dd7323' />
+              </NativeSelect.Root>
+            </Card.Body>
+          </Card.Root>
+        </Box>
 
-        {/* Ranking Card */}
-        {ranking && (
-          <div className='space-y-6'>
+        {/* Ranking Content */}
+        {rankingLoading ? (
+          <Box px={6}>
+            <VStack gap={3} py={12}>
+              <Spinner size='lg' color='#dd7323' />
+              <Text color='gray.500'>Đang tải xếp hạng...</Text>
+            </VStack>
+          </Box>
+        ) : ranking ? (
+          <VStack gap={6} px={6}>
             {/* Main Ranking Display */}
-            <div
-              className={`bg-gradient-to-r ${getRankingColor(ranking.rank, ranking.totalStudents)} rounded-xl shadow-lg p-8 text-white`}
+            <Card.Root
+              w='full'
+              bg='linear-gradient(135deg, #dd7323 0%, #ff9a56 100%)'
+              borderRadius='2xl'
+              shadow='xl'
+              overflow='hidden'
             >
-              <div className='text-center'>
-                <div className='text-6xl mb-4'>{getRankingBadge(ranking.rank)}</div>
-                <p className='text-lg opacity-90 mb-2'>Xếp hạng của bạn</p>
-                <div className='flex items-baseline justify-center gap-2'>
-                  <span className='text-5xl font-bold'>{ranking.rank}</span>
-                  <span className='text-2xl opacity-75'>/ {ranking.totalStudents}</span>
-                </div>
-                <p className='text-sm opacity-75 mt-4'>
-                  {ranking.className} ({ranking.classCode})
-                </p>
-              </div>
-            </div>
+              <Card.Body p={8}>
+                <VStack gap={4}>
+                  <Text fontSize='6xl'>{getRankingBadge(ranking.rank)}</Text>
+                  <Text fontSize='lg' color='whiteAlpha.900'>
+                    Xếp hạng của bạn
+                  </Text>
+                  <HStack gap={2} align='baseline'>
+                    <Text fontSize='5xl' fontWeight='bold' color='white'>
+                      {ranking.rank}
+                    </Text>
+                    <Text fontSize='2xl' color='whiteAlpha.800'>
+                      / {ranking.totalStudents}
+                    </Text>
+                  </HStack>
+                  <Text fontSize='sm' color='whiteAlpha.800'>
+                    {ranking.className} ({ranking.classCode})
+                  </Text>
+                </VStack>
+              </Card.Body>
+            </Card.Root>
 
             {/* Stats Grid */}
-            <div className='grid grid-cols-1 md:grid-cols-3 gap-4'>
-              <div className='bg-white rounded-xl shadow-sm border border-slate-200 p-6'>
-                <div className='flex items-center justify-between'>
-                  <div>
-                    <p className='text-slate-500 text-sm font-medium'>Điểm số</p>
-                    <p className='text-3xl font-bold text-slate-900 mt-2'>{ranking.score.toFixed(1)}</p>
-                  </div>
-                  <div className='p-3 bg-blue-100 rounded-lg'>
-                    <TrendingUp size={24} className='text-blue-600' />
-                  </div>
-                </div>
-              </div>
-
-              <div className='bg-white rounded-xl shadow-sm border border-slate-200 p-6'>
-                <div className='flex items-center justify-between'>
-                  <div>
-                    <p className='text-slate-500 text-sm font-medium'>Xếp hạng</p>
-                    <p className='text-3xl font-bold text-slate-900 mt-2'>#{ranking.rank}</p>
-                  </div>
-                  <div className='p-3 bg-purple-100 rounded-lg'>
-                    <Trophy size={24} className='text-purple-600' />
-                  </div>
-                </div>
-              </div>
-
-              <div className='bg-white rounded-xl shadow-sm border border-slate-200 p-6'>
-                <div className='flex items-center justify-between'>
-                  <div>
-                    <p className='text-slate-500 text-sm font-medium'>Tổng sinh viên</p>
-                    <p className='text-3xl font-bold text-slate-900 mt-2'>{ranking.totalStudents}</p>
-                  </div>
-                  <div className='p-3 bg-green-100 rounded-lg'>
-                    <Award size={24} className='text-green-600' />
-                  </div>
-                </div>
-              </div>
-            </div>
+            <Grid templateColumns={{ base: '1fr', md: 'repeat(3, 1fr)' }} gap={4} w='full'>
+              <StatsCard label='Điểm số' value={ranking.score.toFixed(1)} icon={TrendingUp} />
+              <StatsCard label='Xếp hạng' value={`#${ranking.rank}`} icon={Trophy} />
+              <StatsCard label='Tổng sinh viên' value={ranking.totalStudents} icon={Award} />
+            </Grid>
 
             {/* Progress Bar */}
-            <div className='bg-white rounded-xl shadow-sm border border-slate-200 p-6'>
-              <div className='flex items-center justify-between mb-3'>
-                <h3 className='font-semibold text-slate-900'>Tiến độ xếp hạng</h3>
-                <span className='text-sm text-slate-500'>
-                  Top {Math.round((ranking.rank / ranking.totalStudents) * 100)}%
-                </span>
-              </div>
-              <div className='w-full bg-slate-200 rounded-full h-3 overflow-hidden'>
-                <div
-                  className={`h-full bg-gradient-to-r ${getRankingColor(ranking.rank, ranking.totalStudents)} transition-all duration-500`}
-                  style={{
-                    width: `${Math.max((1 - ranking.rank / ranking.totalStudents) * 100, 5)}%`
-                  }}
-                ></div>
-              </div>
-              <p className='text-xs text-slate-500 mt-3'>
-                Bạn đứng trên {ranking.totalStudents - ranking.rank} sinh viên khác trong lớp
-              </p>
-            </div>
-          </div>
+            <Card.Root w='full' bg='white' border='1px solid' borderColor='orange.200' borderRadius='xl' shadow='sm'>
+              <Card.Body p={6}>
+                <HStack justify='space-between' mb={3}>
+                  <Text fontWeight='semibold' color='gray.800'>
+                    Tiến độ xếp hạng
+                  </Text>
+                  <Text fontSize='sm' color='#dd7323' fontWeight='medium'>
+                    Top {ranking.totalStudents > 0 ? Math.round((ranking.rank / ranking.totalStudents) * 100) : 0}%
+                  </Text>
+                </HStack>
+                <Box w='full' bg='orange.100' borderRadius='full' h='12px' overflow='hidden'>
+                  <Box
+                    h='full'
+                    bg='linear-gradient(90deg, #dd7323 0%, #ff9a56 100%)'
+                    borderRadius='full'
+                    transition='all 0.5s'
+                    style={{
+                      width: `${ranking.totalStudents > 0 ? Math.max((1 - ranking.rank / ranking.totalStudents) * 100, 5) : 0}%`
+                    }}
+                  />
+                </Box>
+                <Text fontSize='xs' color='gray.500' mt={3}>
+                  Bạn đứng trên {ranking.totalStudents - ranking.rank} sinh viên khác trong lớp
+                </Text>
+              </Card.Body>
+            </Card.Root>
+          </VStack>
+        ) : (
+          <Box px={6}>
+            <EmptyState icon={Trophy} title='Chưa có dữ liệu xếp hạng cho lớp này' />
+          </Box>
         )}
-      </div>
-    </div>
+      </Box>
+    </Box>
   )
 }

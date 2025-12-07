@@ -1,11 +1,10 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
   Box,
-  Flex,
   Grid,
   GridItem,
   Text,
@@ -14,7 +13,6 @@ import {
   Card,
   HStack,
   VStack,
-  Icon,
   Circle,
   Spinner,
   Center,
@@ -37,19 +35,24 @@ import { useAuthStore } from '../store/authStore'
 import { useNotificationUIStore } from '../store/notificationUIStore'
 import api from '../utils/axios'
 import { fetchCalendarAssignments } from '../services/studentApi'
+import PageHeader from '../components/ui/PageHeader'
+import StatsCard from '../components/ui/StatsCard'
 import type { CalendarAssignment } from '../types'
 
-// ============================================
-// TYPES
-// ============================================
-interface DashboardStats {
-  enrolledClasses: number
-  upcomingDeadlines: number
+// Import types from centralized types
+import type { 
+  StudentDashboardStats, 
+  RecentNotification, 
+  StudentEnrolledClassDTO,
+  CalendarDay 
+} from '../types'
+
+// Local type alias for dashboard stats with additional field
+interface DashboardStats extends StudentDashboardStats {
   unreadNotifications: number
-  averageScore: number
 }
 
-// API Response Types
+// API Response Types (specific to this page's API calls)
 interface NotificationFromAPI {
   id: number
   title: string
@@ -58,30 +61,6 @@ interface NotificationFromAPI {
   class_id?: number
   sent_at: string
   is_read?: boolean
-}
-
-interface ClassFromAPI {
-  class_id: string
-  name: string
-  student_count: number
-  status: string
-  subjectName: string
-  lecturerName: string
-  semester: string
-  academic_year: string
-  description?: string
-}
-
-interface RecentNotification {
-  id: string
-  type: 'admin' | 'lecturer'
-  title: string
-  content: string
-  senderName?: string
-  senderAvatar?: string
-  createdAt: string
-  isRead: boolean
-  classId?: number
 }
 
 // ============================================
@@ -116,17 +95,9 @@ const getRelativeTime = (dateStr: string): string => {
 
 // Calendar constants
 const DAYS_SHORT = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
-const TYPE_COLORS: Record<CalendarAssignment['type'], string> = {
-  homework: 'green.500',
-  project: 'purple.500',
-  midterm: 'orange.500',
-  final: 'red.500'
-}
 
-interface CalendarDay {
-  date: Date
-  isCurrentMonth: boolean
-  isToday: boolean
+// Extended CalendarDay with assignments
+interface CalendarDayWithAssignments extends CalendarDay {
   assignments: CalendarAssignment[]
 }
 
@@ -253,187 +224,76 @@ export default function HomeRoute() {
   }
 
   return (
-    <Box minH='100vh' bg='gray.50' py={8} px={{ base: 4, md: 6, lg: 8 }}>
+    <Box minH='100vh' bg='white' py={8} px={{ base: 4, md: 6, lg: 8 }}>
       <Box maxW='1400px' mx='auto'>
         {/* ============================================
-            HERO SECTION
+            HERO SECTION - White/Orange Theme
         ============================================ */}
-        <Box
-          bg='linear-gradient(135deg, #1a2332 0%, #2d3e50 50%, #1e3a5f 100%)'
-          borderRadius='2xl'
-          p={{ base: 6, md: 8 }}
-          mb={8}
-          color='white'
-          position='relative'
-          overflow='hidden'
-        >
-          <VStack align='flex-start' gap={2} position='relative' zIndex={1}>
-            <Heading size={{ base: 'xl', md: '2xl' }} fontWeight='bold' color='white'>
-              Chào mừng quay trở lại,{' '}
-              <Text as='span' color='#ff9500'>
-                {user?.fullName || 'Sinh viên'}
-              </Text>
-              ! 👋
-            </Heading>
-            <Text fontSize={{ base: 'md', md: 'lg' }} color='whiteAlpha.900'>
-              Hôm nay là {getVietnameseDay(today.getDay())}, ngày {formatDate(today)}
-            </Text>
-          </VStack>
+        <Box mb={8}>
+          {/* Header */}
+          <PageHeader
+            icon={Award}
+            title={`Chào mừng, ${user?.fullName || 'Sinh viên'}!`}
+            subtitle={`Hôm nay là ${getVietnameseDay(today.getDay())}, ngày ${formatDate(today)}`}
+          />
 
-          {/* Quick Stats Grid */}
-          <Grid
-            templateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }}
-            gap={4}
-            mt={8}
-            position='relative'
-            zIndex={1}
-          >
-            {/* Unread Notifications */}
-            <Card.Root
-              bg='rgba(255, 255, 255, 0.08)'
-              backdropFilter='blur(10px)'
-              border='1px solid'
-              borderColor='rgba(255, 149, 0, 0.2)'
-              _hover={{
-                transform: 'translateY(-2px)',
-                bg: 'rgba(255, 149, 0, 0.15)',
-                borderColor: 'rgba(255, 149, 0, 0.4)'
-              }}
-              transition='all 0.2s'
-              cursor='pointer'
+          {/* Quick Stats Grid - Orange/White Theme */}
+          <Grid templateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }} gap={4} px={6}>
+            <StatsCard
+              label='Thông báo chưa đọc'
+              value={stats?.unreadNotifications || 0}
+              icon={Bell}
+              isLoading={statsLoading}
               onClick={openNotificationPanel}
-            >
-              <Card.Body py={4} px={5}>
-                <HStack justify='space-between'>
-                  <VStack align='flex-start' gap={1}>
-                    <Text fontSize='sm' color='whiteAlpha.800'>
-                      Unread Notifications
-                    </Text>
-                    <Text fontSize='3xl' color='whiteAlpha.800' fontWeight='bold'>
-                      {statsLoading ? '-' : stats?.unreadNotifications || 0}
-                    </Text>
-                  </VStack>
-                  <Circle size='12' bg='rgba(255, 149, 0, 0.2)'>
-                    <Bell size={24} color='#ff9500' />
-                  </Circle>
-                </HStack>
-              </Card.Body>
-            </Card.Root>
-
-            {/* Enrolled Classes */}
-            <Card.Root
-              bg='rgba(255, 255, 255, 0.08)'
-              backdropFilter='blur(10px)'
-              border='1px solid'
-              borderColor='rgba(255, 149, 0, 0.2)'
-              _hover={{
-                transform: 'translateY(-2px)',
-                bg: 'rgba(255, 149, 0, 0.15)',
-                borderColor: 'rgba(255, 149, 0, 0.4)'
-              }}
-              transition='all 0.2s'
-              cursor='pointer'
+            />
+            <StatsCard
+              label='Lớp đã đăng ký'
+              value={stats?.enrolledClasses || 0}
+              icon={BookOpen}
+              isLoading={statsLoading}
               onClick={() => navigate('/student/my-courses')}
-            >
-              <Card.Body py={4} px={5}>
-                <HStack justify='space-between'>
-                  <VStack align='flex-start' gap={1}>
-                    <Text fontSize='sm' color='whiteAlpha.800'>
-                      Enrolled Classes
-                    </Text>
-                    <Text fontSize='3xl' color='whiteAlpha.800' fontWeight='bold'>
-                      {statsLoading ? '-' : stats?.enrolledClasses || 0}
-                    </Text>
-                  </VStack>
-                  <Circle size='12' bg='rgba(255, 149, 0, 0.2)'>
-                    <BookOpen size={24} color='#ff9500' />
-                  </Circle>
-                </HStack>
-              </Card.Body>
-            </Card.Root>
-
-            {/* Upcoming Deadlines */}
-            <Card.Root
-              bg='rgba(255, 255, 255, 0.08)'
-              backdropFilter='blur(10px)'
-              border='1px solid'
-              borderColor='rgba(255, 149, 0, 0.2)'
-              _hover={{
-                transform: 'translateY(-2px)',
-                bg: 'rgba(255, 149, 0, 0.15)',
-                borderColor: 'rgba(255, 149, 0, 0.4)'
-              }}
-              transition='all 0.2s'
-              cursor='pointer'
+            />
+            <StatsCard
+              label='Deadline tuần này'
+              value={stats?.upcomingDeadlines || 0}
+              icon={Clock}
+              isLoading={statsLoading}
               onClick={() => navigate('/student/calendar')}
-            >
-              <Card.Body py={4} px={5}>
-                <HStack justify='space-between'>
-                  <VStack align='flex-start' gap={1}>
-                    <Text fontSize='sm' color='whiteAlpha.800'>
-                      Deadlines Upcoming Week
-                    </Text>
-                    <Text fontSize='3xl' color='whiteAlpha.800' fontWeight='bold'>
-                      {statsLoading ? '-' : stats?.upcomingDeadlines || 0}
-                    </Text>
-                  </VStack>
-                  <Circle size='12' bg='rgba(255, 149, 0, 0.2)'>
-                    <Clock size={24} color='#ff9500' />
-                  </Circle>
-                </HStack>
-              </Card.Body>
-            </Card.Root>
-
-            {/* Average Score */}
-            <Card.Root
-              bg='rgba(255, 255, 255, 0.08)'
-              backdropFilter='blur(10px)'
-              border='1px solid'
-              borderColor='rgba(255, 149, 0, 0.2)'
-              _hover={{
-                transform: 'translateY(-2px)',
-                bg: 'rgba(255, 149, 0, 0.15)',
-                borderColor: 'rgba(255, 149, 0, 0.4)'
-              }}
-              transition='all 0.2s'
-              cursor='pointer'
+            />
+            <StatsCard
+              label='Điểm trung bình'
+              value={stats?.averageScore?.toFixed(1) || '0.0'}
+              icon={Award}
+              isLoading={statsLoading}
               onClick={() => navigate('/student/ranking')}
-            >
-              <Card.Body py={4} px={5}>
-                <HStack justify='space-between'>
-                  <VStack align='flex-start' gap={1}>
-                    <Text fontSize='sm' color='whiteAlpha.800'>
-                      Average Score
-                    </Text>
-                    <Text fontSize='3xl' color='whiteAlpha.800' fontWeight='bold'>
-                      {statsLoading ? '-' : stats?.averageScore?.toFixed(1) || '0.0'}
-                    </Text>
-                  </VStack>
-                  <Circle size='12' bg='rgba(255, 149, 0, 0.2)'>
-                    <Award size={24} color='#ff9500' />
-                  </Circle>
-                </HStack>
-              </Card.Body>
-            </Card.Root>
+            />
           </Grid>
         </Box>
 
         {/* ============================================
             MAIN CONTENT - 2 Columns
         ============================================ */}
-        <Grid templateColumns={{ base: '1fr', lg: '1fr 400px' }} gap={8}>
+        <Grid templateColumns={{ base: '1fr', lg: '1fr 400px' }} gap={8} px={6}>
           {/* Left Column - Recent Notifications */}
-          <Card.Root bg='white' borderRadius='xl' shadow='sm'>
+          <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.100' shadow='sm'>
             <Card.Header pb={3} pt={5} px={6}>
               <HStack justify='space-between'>
                 <HStack gap={3}>
-                  <Circle size='10' bg='orange.100'>
-                    <Bell size={20} color='#dd7323' />
-                  </Circle>
-                  <Heading size='md'>Recent Notifications</Heading>
+                  <Box p={2} bg='#dd7323' borderRadius='lg'>
+                    <Bell size={20} color='white' />
+                  </Box>
+                  <Heading size='md' color='gray.800'>
+                    Thông báo gần đây
+                  </Heading>
                 </HStack>
-                <Button variant='ghost' size='sm' colorPalette='orange' onClick={openNotificationPanel}>
-                  View All
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  color='#dd7323'
+                  _hover={{ bg: 'orange.50' }}
+                  onClick={openNotificationPanel}
+                >
+                  Xem tất cả
                   <ArrowRight size={16} />
                 </Button>
               </HStack>
@@ -446,11 +306,11 @@ export default function HomeRoute() {
                     key={notification.id}
                     p={4}
                     bg={notification.isRead ? 'gray.50' : 'orange.50'}
-                    borderRadius='lg'
+                    borderRadius='xl'
                     borderLeft='4px solid'
-                    borderLeftColor={notification.type === 'admin' ? 'orange.500' : 'blue.500'}
+                    borderLeftColor='#dd7323'
                     cursor='pointer'
-                    _hover={{ bg: notification.isRead ? 'gray.100' : 'orange.100' }}
+                    _hover={{ bg: notification.isRead ? 'gray.100' : 'orange.100', transform: 'translateX(4px)' }}
                     transition='all 0.2s'
                     onClick={() => handleNotificationClick(notification)}
                   >
@@ -468,7 +328,7 @@ export default function HomeRoute() {
                           </Avatar.Root>
                           <Circle
                             size='5'
-                            bg='blue.500'
+                            bg='#dd7323'
                             position='absolute'
                             bottom='-2px'
                             right='-2px'
@@ -482,11 +342,11 @@ export default function HomeRoute() {
                       {/* Content */}
                       <VStack align='flex-start' gap={1} flex={1} minW={0}>
                         <HStack gap={2} flexWrap='wrap'>
-                          <Text fontWeight='semibold' fontSize='sm' lineClamp={1}>
+                          <Text fontWeight='semibold' fontSize='sm' color='gray.800' lineClamp={1}>
                             {notification.title}
                           </Text>
                           {!notification.isRead && (
-                            <Badge colorPalette='orange' size='sm'>
+                            <Badge bg='#dd7323' color='white' size='sm' borderRadius='full'>
                               Mới
                             </Badge>
                           )}
@@ -511,8 +371,8 @@ export default function HomeRoute() {
                 {notifications.length === 0 && (
                   <Center py={8}>
                     <VStack gap={3}>
-                      <Circle size='16' bg='gray.100'>
-                        <Bell size={32} color='#a0aec0' />
+                      <Circle size='16' bg='orange.50'>
+                        <Bell size={32} color='#dd7323' />
                       </Circle>
                       <Text color='gray.500'>Không có thông báo mới</Text>
                     </VStack>
@@ -523,17 +383,25 @@ export default function HomeRoute() {
           </Card.Root>
 
           {/* Right Column - Mini Calendar */}
-          <Card.Root bg='white' borderRadius='xl' shadow='sm' height='fit-content'>
+          <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.100' shadow='sm' height='fit-content'>
             <Card.Header pb={2} pt={5} px={6}>
               <HStack justify='space-between'>
                 <HStack gap={3}>
-                  <Circle size='10' bg='blue.100'>
-                    <Calendar size={20} color='#3182ce' />
-                  </Circle>
-                  <Heading size='md'>Calendar</Heading>
+                  <Box p={2} bg='#dd7323' borderRadius='lg'>
+                    <Calendar size={20} color='white' />
+                  </Box>
+                  <Heading size='md' color='gray.800'>
+                    Lịch
+                  </Heading>
                 </HStack>
-                <Button variant='ghost' size='sm' colorPalette='blue' onClick={() => navigate('/student/calendar')}>
-                  View Full Calendar
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  color='#dd7323'
+                  _hover={{ bg: 'orange.50' }}
+                  onClick={() => navigate('/student/calendar')}
+                >
+                  Xem đầy đủ
                   <ArrowRight size={16} />
                 </Button>
               </HStack>
@@ -542,27 +410,41 @@ export default function HomeRoute() {
             <Card.Body pt={2} pb={4}>
               {/* Calendar Navigation */}
               <HStack justify='space-between' mb={3}>
-                <IconButton aria-label='Previous month' variant='ghost' size='sm' onClick={goToPrevMonth}>
+                <IconButton
+                  aria-label='Previous month'
+                  variant='ghost'
+                  size='sm'
+                  color='#dd7323'
+                  _hover={{ bg: 'orange.50' }}
+                  onClick={goToPrevMonth}
+                >
                   <ChevronLeft size={18} />
                 </IconButton>
-                <Text fontWeight='semibold'>
+                <Text fontWeight='semibold' color='#dd7323'>
                   Tháng {currentDate.getMonth() + 1}/{currentDate.getFullYear()}
                 </Text>
-                <IconButton aria-label='Next month' variant='ghost' size='sm' onClick={goToNextMonth}>
+                <IconButton
+                  aria-label='Next month'
+                  variant='ghost'
+                  size='sm'
+                  color='#dd7323'
+                  _hover={{ bg: 'orange.50' }}
+                  onClick={goToNextMonth}
+                >
                   <ChevronRight size={18} />
                 </IconButton>
               </HStack>
 
               {calendarLoading ? (
                 <Center h='200px'>
-                  <Spinner size='lg' color='blue.500' />
+                  <Spinner size='lg' color='#dd7323' />
                 </Center>
               ) : (
                 <>
                   {/* Day Headers */}
                   <Grid templateColumns='repeat(7, 1fr)' gap={1} mb={2}>
                     {DAYS_SHORT.map((day) => (
-                      <Text key={day} textAlign='center' fontSize='xs' fontWeight='semibold' color='gray.500'>
+                      <Text key={day} textAlign='center' fontSize='xs' fontWeight='semibold' color='#dd7323'>
                         {day}
                       </Text>
                     ))}
@@ -576,7 +458,7 @@ export default function HomeRoute() {
                         p={1}
                         textAlign='center'
                         borderRadius='md'
-                        bg={day.isToday ? 'blue.500' : day.assignments.length > 0 ? 'orange.50' : 'transparent'}
+                        bg={day.isToday ? '#dd7323' : day.assignments.length > 0 ? 'orange.50' : 'transparent'}
                         color={day.isToday ? 'white' : day.isCurrentMonth ? 'gray.800' : 'gray.400'}
                         position='relative'
                         minH='32px'
@@ -584,7 +466,7 @@ export default function HomeRoute() {
                         alignItems='center'
                         justifyContent='center'
                         cursor={day.assignments.length > 0 ? 'pointer' : 'default'}
-                        _hover={day.assignments.length > 0 ? { bg: day.isToday ? 'blue.600' : 'orange.100' } : {}}
+                        _hover={day.assignments.length > 0 ? { bg: day.isToday ? '#c5651f' : 'orange.100' } : {}}
                         onClick={() => {
                           if (day.assignments.length > 0) {
                             navigate('/student/calendar')
@@ -597,7 +479,7 @@ export default function HomeRoute() {
                         {day.assignments.length > 0 && !day.isToday && (
                           <Circle
                             size='2'
-                            bg='orange.500'
+                            bg='#dd7323'
                             position='absolute'
                             bottom='2px'
                             left='50%'
@@ -609,29 +491,29 @@ export default function HomeRoute() {
                   </Grid>
 
                   {/* Legend */}
-                  <HStack gap={3} mt={3} justify='center' flexWrap='wrap'>
+                  <HStack gap={3} mt={4} justify='center' flexWrap='wrap'>
                     <HStack gap={1}>
                       <Circle size='2' bg='green.500' />
                       <Text fontSize='xs' color='gray.600'>
-                        Homework
+                        Bài tập
                       </Text>
                     </HStack>
                     <HStack gap={1}>
                       <Circle size='2' bg='purple.500' />
                       <Text fontSize='xs' color='gray.600'>
-                        Project
+                        Dự án
                       </Text>
                     </HStack>
                     <HStack gap={1}>
-                      <Circle size='2' bg='orange.500' />
+                      <Circle size='2' bg='#dd7323' />
                       <Text fontSize='xs' color='gray.600'>
-                        Midterm
+                        Giữa kỳ
                       </Text>
                     </HStack>
                     <HStack gap={1}>
                       <Circle size='2' bg='red.500' />
                       <Text fontSize='xs' color='gray.600'>
-                        Final
+                        Cuối kỳ
                       </Text>
                     </HStack>
                   </HStack>

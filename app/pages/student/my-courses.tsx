@@ -1,31 +1,65 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Box, Button, Text, VStack, Spinner, HStack, Heading, Icon, Center } from '@chakra-ui/react'
+import { Box, Button, Text, VStack, Spinner, Center } from '@chakra-ui/react'
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay'
 import { BookOpen, GraduationCap, Plus } from 'lucide-react'
 import api from '../../utils/axios'
 import CourseCard, { type EnrolledClass } from '../../components/ui/CourseCard'
+import PageHeader from '../../components/ui/PageHeader'
 import { useAuthStore } from '../../store/authStore'
 import { toaster } from '../../components/ui/toaster'
 
-// API Response type matching backend ClassDTO
-interface ClassDTO {
-  class_id: string
-  name: string
-  student_count: number
-  status: number
-  subjectName: string
-  lecturerName: string
-  semester?: string
-  academic_year?: string
-  description?: string
-  enrolled_at?: string
-}
+// ============================================
+// MOCK DATA - Set to true to use mock data
+// ============================================
+const USE_MOCK_DATA = true
 
-interface APIResponse {
-  results: ClassDTO[]
-}
+const MOCK_COURSES: EnrolledClass[] = [
+  {
+    classId: 'CS101-01',
+    subjectId: 'CS101',
+    subjectName: 'Nhập môn lập trình',
+    lecturerName: 'Nguyễn Văn An',
+    totalStudents: 45,
+    enrolledAt: '2024-09-01T08:00:00Z'
+  },
+  {
+    classId: 'CS201-02',
+    subjectId: 'CS201',
+    subjectName: 'Cấu trúc dữ liệu và giải thuật',
+    lecturerName: 'Trần Thị Bình',
+    totalStudents: 38,
+    enrolledAt: '2024-09-02T10:30:00Z'
+  },
+  {
+    classId: 'CS301-01',
+    subjectId: 'CS301',
+    subjectName: 'Cơ sở dữ liệu',
+    lecturerName: 'Lê Hoàng Cường',
+    totalStudents: 42,
+    enrolledAt: '2024-09-03T14:00:00Z'
+  },
+  {
+    classId: 'CS401-03',
+    subjectId: 'CS401',
+    subjectName: 'Phát triển ứng dụng Web',
+    lecturerName: 'Phạm Minh Đức',
+    totalStudents: 35,
+    enrolledAt: '2024-09-05T09:15:00Z'
+  },
+  {
+    classId: 'CS501-01',
+    subjectId: 'CS501',
+    subjectName: 'Trí tuệ nhân tạo',
+    lecturerName: 'Hoàng Thị Lan',
+    totalStudents: 30,
+    enrolledAt: '2024-09-10T11:00:00Z'
+  }
+]
+
+// Import types from centralized types
+import type { StudentEnrolledClassDTO, EnrolledClassesResponse } from '../../types'
 
 export default function MyCoursesRoute() {
   const [courses, setCourses] = useState<EnrolledClass[]>([])
@@ -35,6 +69,15 @@ export default function MyCoursesRoute() {
   const { user } = useAuthStore()
 
   const fetchMyCourses = useCallback(async () => {
+    // Use mock data for UI testing
+    if (USE_MOCK_DATA) {
+      setLoading(true)
+      await new Promise((resolve) => setTimeout(resolve, 500)) // Simulate loading
+      setCourses(MOCK_COURSES)
+      setLoading(false)
+      return
+    }
+
     if (!user?.id) {
       setError('Vui lòng đăng nhập để xem danh sách lớp học.')
       setLoading(false)
@@ -45,14 +88,14 @@ export default function MyCoursesRoute() {
     setError(null)
     try {
       // Call API to get enrolled classes
-      const response = await api.get<APIResponse>('/student/classes/class-enrolled', {
+      const response = await api.get<EnrolledClassesResponse>('/student/classes/class-enrolled', {
         params: {
           student_id: user.id
         }
       })
 
       // Map API response to EnrolledClass format
-      const mappedCourses: EnrolledClass[] = (response.data.results || []).map((c) => ({
+      const mappedCourses: EnrolledClass[] = (response.data.results || []).map((c: StudentEnrolledClassDTO) => ({
         classId: c.class_id,
         subjectId: c.class_id, // Using class_id as subjectId if not provided
         subjectName: c.subjectName || c.name,
@@ -144,39 +187,11 @@ export default function MyCoursesRoute() {
   return (
     <Box w='full' py={8} px={{ base: 4, sm: 6, lg: 8 }} bg='white' minH='100vh'>
       <Box maxW='6xl' mx='auto'>
-        {/* Header - simplified */}
-        <HStack mb={10} justifyContent='space-between' flexWrap='wrap' gap={4} p={6}>
-          <VStack alignItems='flex-start' gap={2}>
-            <HStack gap={3}>
-              <Box
-                p={2}
-                bg='orange.500'
-                borderRadius='xl'
-                shadow='lg'
-                _hover={{ transform: 'rotate(5deg)', transition: 'all 0.3s' }}
-              >
-                <Icon asChild color='white'>
-                  <GraduationCap size={32} />
-                </Icon>
-              </Box>
-              <Heading
-                size='4xl'
-                fontWeight='bold'
-                bgGradient='to-r'
-                gradientFrom='gray.800'
-                gradientTo='gray.600'
-                bgClip='text'
-              >
-                My Courses
-              </Heading>
-            </HStack>
-            <Text color='gray.600' fontSize='md' fontWeight='medium'>
-              Manage the courses you have enrolled in
-            </Text>
-          </VStack>
+        {/* Header */}
+        <PageHeader icon={GraduationCap} title='Lớp học của tôi' subtitle='Quản lý các lớp học bạn đã đăng ký'>
           <Button
-            colorPalette='orange'
-            variant='solid'
+            bg='#dd7323'
+            color='white'
             size='lg'
             borderRadius='xl'
             shadow='md'
@@ -184,6 +199,7 @@ export default function MyCoursesRoute() {
             px={6}
             fontWeight='semibold'
             _hover={{
+              bg: '#c5651f',
               shadow: '0 8px 25px -5px rgba(237, 137, 54, 0.5)',
               transform: 'translateY(-2px)'
             }}
@@ -191,9 +207,9 @@ export default function MyCoursesRoute() {
             onClick={() => (window.location.href = '/student/all-courses')}
           >
             <Plus size={18} />
-            Enroll New Course
+            Đăng ký lớp mới
           </Button>
-        </HStack>
+        </PageHeader>
 
         {/* Courses Grid or Suggest Enroll */}
         {courses.length === 0 ? (
@@ -223,9 +239,7 @@ export default function MyCoursesRoute() {
               }}
             >
               <Box p={6} borderRadius='full' bg='orange.50' shadow='inner' border='3px solid' borderColor='orange.100'>
-                <Icon asChild color='orange.500' boxSize={16}>
-                  <BookOpen size={64} />
-                </Icon>
+                <BookOpen size={64} color='#dd7323' />
               </Box>
               <VStack gap={3}>
                 <Text
@@ -236,21 +250,21 @@ export default function MyCoursesRoute() {
                   gradientTo='gray.600'
                   bgClip='text'
                 >
-                  No courses enrolled yet!
+                  Chưa có lớp học nào!
                 </Text>
                 <Text color='gray.600' textAlign='center' fontSize='md' lineHeight='1.7' maxW='sm'>
-                  You have not enrolled in any courses yet. Explore and enroll now!
+                  Bạn chưa đăng ký lớp học nào. Hãy khám phá và đăng ký ngay!
                 </Text>
               </VStack>
               <Button
-                bg='orange.500'
+                bg='#dd7323'
                 color='white'
                 size='xl'
                 borderRadius='xl'
                 shadow='lg'
                 px={8}
                 _hover={{
-                  bg: 'orange.600',
+                  bg: '#c5651f',
                   shadow: 'xl',
                   transform: 'translateY(-2px)',
                   transition: 'all 0.2s'
@@ -258,7 +272,7 @@ export default function MyCoursesRoute() {
                 onClick={() => (window.location.href = '/student/all-courses')}
               >
                 <BookOpen size={20} />
-                Explore and enroll in courses
+                Khám phá và đăng ký lớp học
               </Button>
             </VStack>
           </Center>

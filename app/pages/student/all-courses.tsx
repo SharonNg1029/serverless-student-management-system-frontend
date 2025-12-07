@@ -1,12 +1,17 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Search, Loader2, BookOpen } from 'lucide-react'
-import { Box, SimpleGrid, Text, VStack, Spinner, Input, InputGroup } from '@chakra-ui/react'
+import { Search, ChevronRight, BookOpen, Library } from 'lucide-react'
+import { Box, Text, VStack, Spinner, Collapsible, SimpleGrid, HStack, Icon } from '@chakra-ui/react'
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay'
+import SubjectClassCard, { type ClassInfo } from '../../components/ui/SubjectClassCard'
+import EnrolmentModal from '../../components/ui/EnrolmentModal'
+import PageHeader from '../../components/ui/PageHeader'
+import EmptyState from '../../components/ui/EmptyState'
+import { toaster } from '../../components/ui/toaster'
 import api from '../../utils/axios'
 
-// API Response type
+// API Response types
 interface SubjectFromAPI {
   id: string
   name: string
@@ -14,8 +19,27 @@ interface SubjectFromAPI {
   credits?: number
 }
 
-interface APIResponse {
+interface ClassFromAPI {
+  id: number
+  name: string
+  subject_id: number
+  subject_name?: string
+  teacher_id: number
+  teacher_name?: string
+  semester: string
+  academic_year: string
+  student_count: number
+  status: number
+}
+
+interface SubjectsAPIResponse {
   data: SubjectFromAPI[]
+  count: number
+  message: string
+}
+
+interface ClassesAPIResponse {
+  data: ClassFromAPI[]
   count: number
   message: string
 }
@@ -27,23 +51,39 @@ interface Subject {
   credits: number
 }
 
+interface SubjectWithClasses extends Subject {
+  classes: ClassInfo[]
+  isLoading: boolean
+  isLoaded: boolean
+}
+
 export default function AllCoursesRoute() {
-  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [subjects, setSubjects] = useState<SubjectWithClasses[]>([])
   const [searchTerm, setSearchTerm] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set())
+
+  // Modal state
+  const [selectedClass, setSelectedClass] = useState<ClassInfo | null>(null)
+  const [selectedCardIndex, setSelectedCardIndex] = useState(0)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
   const fetchSubjects = useCallback(async () => {
     setLoading(true)
     setError(null)
-    try {
-      const response = await api.get<APIResponse>('/api/v1/subjects')
 
-      const mappedSubjects: Subject[] = (response.data.data || []).map((s) => ({
+    try {
+      const response = await api.get<SubjectsAPIResponse>('/api/v1/subjects')
+
+      const mappedSubjects: SubjectWithClasses[] = (response.data.data || []).map((s) => ({
         id: s.id,
         name: s.name,
         description: s.description || 'Chưa có mô tả',
-        credits: s.credits || 0
+        credits: s.credits || 0,
+        classes: [],
+        isLoading: false,
+        isLoaded: false
       }))
 
       setSubjects(mappedSubjects)
@@ -54,14 +94,99 @@ export default function AllCoursesRoute() {
     }
   }, [])
 
+  const fetchClassesForSubject = useCallback(async (subjectId: string) => {
+    // Update loading state
+    setSubjects((prev) =>
+      prev.map((s) => (s.id === subjectId ? { ...s, isLoading: true } : s))
+    )
+
+    try {
+      const response = await api.get<ClassesAPIResponse>(`/api/v1/subjects/${subjectId}/classes`)
+
+      const classes: ClassInfo[] = (response.data.data || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        subject_id: c.subject_id,
+        subject_name: c.subject_name || '',
+        teacher_id: c.teacher_id,
+        teacher_name: c.teacher_name || 'Chưa có giảng viên',
+        semester: c.semester,
+        academic_year: c.academic_year,
+        student_count: c.student_count,
+        status: c.status
+      }))
+
+      setSubjects((prev) =>
+        prev.map((s) =>
+          s.id === subjectId ? { ...s, classes, isLoading: false, isLoaded: true } : s
+        )
+      )
+    } catch (err) {
+      console.error('Failed to fetch classes:', err)
+      setSubjects((prev) =>
+        prev.map((s) => (s.id === subjectId ? { ...s, isLoading: false, isLoaded: true } : s))
+      )
+    }
+  }, [])
+
   useEffect(() => {
     fetchSubjects()
   }, [fetchSubjects])
 
+  const handleToggleSubject = (subjectId: string) => {
+    const subject = subjects.find((s) => s.id === subjectId)
+
+    setExpandedSubjects((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(subjectId)) {
+        newSet.delete(subjectId)
+      } else {
+        newSet.add(subjectId)
+        // Fetch classes if not loaded yet
+        if (subject && !subject.isLoaded && !subject.isLoading) {
+          fetchClassesForSubject(subjectId)
+        }
+      }
+      return newSet
+    })
+  }
+
+  const handleClassClick = (classInfo: ClassInfo, index: number) => {
+    setSelectedClass(classInfo)
+    setSelectedCardIndex(index)
+    setIsModalOpen(true)
+  }
+
+  const handleEnrol = async (classId: number, enrolmentKey: string) => {
+    try {
+      await api.post(`/api/v1/classes/${classId}/enrol`, {
+        enrolment_key: enrolmentKey
+      })
+
+      toaster.create({
+        title: 'Đăng ký thành công',
+        description: 'Bạn đã đăng ký lớp học thành công!',
+        type: 'success',
+        duration: 3000
+      })
+
+      setIsModalOpen(false)
+    } catch (err: any) {
+      const message = err.response?.data?.message || 'Đăng ký thất bại. Vui lòng kiểm tra lại mã đăng ký.'
+      toaster.create({
+        title: 'Đăng ký thất bại',
+        description: message,
+        type: 'error',
+        duration: 3000
+      })
+      throw err
+    }
+  }
+
   const filteredSubjects = subjects.filter(
     (subject) =>
       subject.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      subject.description.toLowerCase().includes(searchTerm.toLowerCase())
+      subject.id.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   if (loading) {
@@ -80,76 +205,136 @@ export default function AllCoursesRoute() {
   }
 
   return (
-    <div className='w-full py-8 px-4 sm:px-6 lg:px-8 bg-slate-50 min-h-screen'>
-      <div className='max-w-6xl mx-auto'>
+    <Box w='full' py={8} px={{ base: 4, sm: 6, lg: 8 }} bg='white' minH='100vh'>
+      <Box maxW='6xl' mx='auto'>
         {/* Header */}
-        <div className='mb-8'>
-          <h1 className='text-3xl font-bold text-slate-900'>Tất cả môn học</h1>
-          <p className='text-slate-600 mt-1'>Khám phá các môn học có sẵn trong hệ thống</p>
-        </div>
+        <PageHeader icon={Library} title='Tất cả môn học' subtitle='Khám phá các môn học có sẵn trong hệ thống' />
 
         {/* Search Bar */}
-        <div className='mb-6'>
-          <div className='relative'>
-            <Search className='absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 z-10' size={20} />
+        <Box mb={6} px={6}>
+          <Box position='relative'>
+            <Box
+              position='absolute'
+              left={4}
+              top='50%'
+              transform='translateY(-50%)'
+              zIndex={1}
+              color='gray.400'
+            >
+              <Search size={20} />
+            </Box>
             <input
               type='text'
-              placeholder='Tìm kiếm theo tên môn học...'
+              placeholder='Tìm kiếm theo tên hoặc mã môn học...'
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className='w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none bg-white'
+              style={{
+                width: '100%',
+                paddingLeft: '48px',
+                paddingRight: '16px',
+                paddingTop: '12px',
+                paddingBottom: '12px',
+                border: '1px solid #fed7aa',
+                borderRadius: '12px',
+                outline: 'none',
+                backgroundColor: '#fite',
+                fontSize: '14px'
+              }}
             />
-          </div>
-        </div>
+          </Box>
+        </Box>
 
-        {/* Subjects Grid */}
+        {/* Subjects List */}
         {filteredSubjects.length === 0 ? (
-          <div className='bg-white rounded-xl border border-slate-200 p-12 text-center'>
-            <BookOpen size={48} className='mx-auto text-slate-300 mb-4' />
-            <p className='text-slate-500'>Không tìm thấy môn học nào</p>
-          </div>
+          <Box px={6}>
+            <EmptyState icon={BookOpen} title='Không tìm thấy môn học nào' />
+          </Box>
         ) : (
-          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
-            {filteredSubjects.map((subject) => (
-              <div
-                key={subject.id}
-                className='bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-lg transition-all hover:-translate-y-1'
-              >
-                {/* Header */}
-                <div className='bg-gradient-to-r from-[#dd7323] to-[#ff8c42] p-4 text-white'>
-                  <p className='text-sm opacity-90'>Mã môn: {subject.id}</p>
-                  <h3 className='text-lg font-bold mt-1'>{subject.name}</h3>
-                </div>
+          <VStack align='stretch' gap={2}>
+            {filteredSubjects.map((subject) => {
+              const isExpanded = expandedSubjects.has(subject.id)
 
-                {/* Content */}
-                <div className='p-4 space-y-3'>
-                  <div className='text-sm'>
-                    <p className='text-slate-600 line-clamp-3'>{subject.description}</p>
-                  </div>
+              return (
+                <Collapsible.Root
+                  key={subject.id}
+                  open={isExpanded}
+                  onOpenChange={() => handleToggleSubject(subject.id)}
+                >
+                  {/* Subject Header */}
+                  <Collapsible.Trigger asChild>
+                    <HStack
+                      as='button'
+                      w='full'
+                      py={3}
+                      px={2}
+                      gap={2}
+                      cursor='pointer'
+                      _hover={{ bg: 'gray.100' }}
+                      borderRadius='lg'
+                      transition='all 0.2s'
+                    >
+                      <Icon
+                        asChild
+                        color='#dd7323'
+                        transform={isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'}
+                        transition='transform 0.2s'
+                      >
+                        <ChevronRight size={20} />
+                      </Icon>
+                      <Text
+                        fontSize='lg'
+                        fontWeight='semibold'
+                        color='#dd7323'
+                        textAlign='left'
+                      >
+                        {subject.id}-{subject.name}
+                      </Text>
+                    </HStack>
+                  </Collapsible.Trigger>
 
-                  {subject.credits > 0 && (
-                    <div className='flex items-center gap-2'>
-                      <span className='px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium'>
-                        {subject.credits} tín chỉ
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer */}
-                <div className='border-t border-slate-100 p-4'>
-                  <button
-                    onClick={() => (window.location.href = `/student/subject/${subject.id}`)}
-                    className='w-full px-4 py-2 bg-slate-100 text-slate-700 rounded-lg font-medium hover:bg-slate-200 transition-colors'
-                  >
-                    Xem chi tiết
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+                  {/* Classes Grid */}
+                  <Collapsible.Content>
+                    <Box pl={8} pr={2} pb={4}>
+                      {subject.isLoading ? (
+                        <HStack gap={2} py={4}>
+                          <Spinner size='sm' color='orange.500' />
+                          <Text fontSize='sm' color='gray.500'>
+                            Đang tải danh sách lớp...
+                          </Text>
+                        </HStack>
+                      ) : subject.classes.length === 0 ? (
+                        <Text fontSize='sm' color='gray.500' py={4}>
+                          Chưa có lớp học nào cho môn này
+                        </Text>
+                      ) : (
+                        <SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} gap={4} pt={2}>
+                          {subject.classes.map((classInfo, index) => (
+                            <SubjectClassCard
+                              key={classInfo.id}
+                              classInfo={classInfo}
+                              index={index}
+                              onClick={() => handleClassClick(classInfo, index)}
+                            />
+                          ))}
+                        </SimpleGrid>
+                      )}
+                    </Box>
+                  </Collapsible.Content>
+                </Collapsible.Root>
+              )
+            })}
+          </VStack>
         )}
-      </div>
-    </div>
+      </Box>
+
+      {/* Enrolment Modal */}
+      <EnrolmentModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        classInfo={selectedClass}
+        cardIndex={selectedCardIndex}
+        onEnrol={handleEnrol}
+      />
+    </Box>
   )
 }

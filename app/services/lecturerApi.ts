@@ -287,21 +287,13 @@ export const lecturerNotificationApi = {
 // ============================================
 
 export const lecturerAssignmentApi = {
-  // List assignments for a class
-  getAssignments: async (classId: number, params?: { keyword?: string; type?: string }) => {
-    const response = await api.get<{ results: AssignmentDTO[] }>(`/lecturer/classes/${classId}/assignments`, { params })
-    return response.data
-  },
-
-  // Get assignment by ID
-  getAssignmentById: async (classId: number, assignmentId: number) => {
-    const response = await api.get<AssignmentDTO>(`/lecturer/classes/${classId}/assignments/${assignmentId}`)
-    return response.data
-  },
-
-  // Create assignment
-  createAssignment: async (classId: number, data: CreateAssignmentRequest) => {
+  /**
+   * POST /lecturer/assignments
+   * Tạo bài tập mới per class (lưu vào assignments, upload file đính kèm optional vào assignment_materials via S3)
+   */
+  createAssignment: async (data: CreateAssignmentRequest) => {
     const formData = new FormData()
+    formData.append('class_id', data.class_id.toString())
     formData.append('title', data.title)
     if (data.description) formData.append('description', data.description)
     formData.append('type', data.type)
@@ -312,80 +304,120 @@ export const lecturerAssignmentApi = {
     const weight = ASSIGNMENT_WEIGHTS[data.type]
     formData.append('weight', weight.toString())
 
-    // Attach files
+    // Attach files (optional - for assignment_materials)
     if (data.files && data.files.length > 0) {
       data.files.forEach((file) => {
         formData.append('files', file)
       })
     }
 
-    const response = await api.post<AssignmentDTO>(`/lecturer/classes/${classId}/assignments`, formData, {
+    const response = await api.post<AssignmentDTO>('/lecturer/assignments', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     return response.data
   },
 
-  // Update assignment
-  updateAssignment: async (classId: number, assignmentId: number, data: UpdateAssignmentRequest) => {
-    const response = await api.patch<AssignmentDTO>(`/lecturer/classes/${classId}/assignments/${assignmentId}`, data)
+  /**
+   * GET /lecturer/classes/{class_id}/assignments
+   * Lấy list bài tập per class (từ assignments, include materials nếu có)
+   */
+  getAssignments: async (classId: number, params?: { keyword?: string; type?: string }) => {
+    const response = await api.get<{ results: AssignmentDTO[] }>(`/lecturer/classes/${classId}/assignments`, { params })
     return response.data
   },
 
-  // Delete assignment
-  deleteAssignment: async (classId: number, assignmentId: number) => {
-    const response = await api.delete<{ message: string }>(`/lecturer/classes/${classId}/assignments/${assignmentId}`)
+  /**
+   * GET /lecturer/classes/{class_id}/assignments/{assignment_id}
+   * Get assignment by ID
+   */
+  getAssignmentById: async (classId: number, assignmentId: number) => {
+    const response = await api.get<AssignmentDTO>(`/lecturer/classes/${classId}/assignments/${assignmentId}`)
     return response.data
   },
 
-  // Publish/unpublish assignment
-  togglePublish: async (classId: number, assignmentId: number, is_published: boolean) => {
-    const response = await api.patch<AssignmentDTO>(`/lecturer/classes/${classId}/assignments/${assignmentId}`, {
-      is_published
-    })
+  /**
+   * PUT /lecturer/assignments/{id}
+   * Sửa bài tập/cột điểm của bài tập (e.g., thay đổi weight, title, type)
+   */
+  updateAssignment: async (assignmentId: number, data: UpdateAssignmentRequest) => {
+    const response = await api.put<AssignmentDTO>(`/lecturer/assignments/${assignmentId}`, data)
     return response.data
   },
 
-  // Get submissions for an assignment
+  /**
+   * DELETE /lecturer/assignments/{id}
+   * Xóa bài tập (soft delete - thay đổi is_published thành false)
+   */
+  deleteAssignment: async (assignmentId: number) => {
+    const response = await api.delete<{ message: string }>(`/lecturer/assignments/${assignmentId}`)
+    return response.data
+  },
+
+  /**
+   * GET /lecturer/assignments/get-submissions
+   * Lấy assignment_submissions của all học sinh (theo assignment_submissions)
+   */
   getSubmissions: async (classId: number, assignmentId: number) => {
     const response = await api.get<{ results: AssignmentSubmissionDTO[] }>(
-      `/lecturer/classes/${classId}/assignments/${assignmentId}/submissions`
+      '/lecturer/assignments/get-submissions',
+      { params: { class_id: classId, assignment_id: assignmentId } }
     )
     return response.data
   },
 
-  // Grade a submission
+  /**
+   * POST /lecturer/assignments/
+   * Tạo/chấm điểm mới cho sinh viên per assignment/class
+   */
+  createGrade: async (data: { assignment_id: number; student_id: number; score: number; feedback?: string }) => {
+    const response = await api.post<AssignmentSubmissionDTO>('/lecturer/assignments/', data)
+    return response.data
+  },
+
+  /**
+   * PUT /lecturer/assignments/{assignment_id}/update-grades
+   * Cập nhật điểm cho sinh viên per assignment
+   */
+  updateGrades: async (assignmentId: number, grades: Array<{ submission_id: number; score: number; feedback?: string }>) => {
+    const response = await api.put<{ results: AssignmentSubmissionDTO[] }>(
+      `/lecturer/assignments/${assignmentId}/update-grades`,
+      { grades }
+    )
+    return response.data
+  },
+
+  /**
+   * Grade a single submission (convenience method)
+   */
   gradeSubmission: async (
     classId: number,
     assignmentId: number,
     submissionId: number,
     data: GradeSubmissionRequest
   ) => {
-    const response = await api.patch<AssignmentSubmissionDTO>(
-      `/lecturer/classes/${classId}/assignments/${assignmentId}/submissions/${submissionId}/grade`,
-      data
+    const response = await api.put<{ results: AssignmentSubmissionDTO[] }>(
+      `/lecturer/assignments/${assignmentId}/update-grades`,
+      { grades: [{ submission_id: submissionId, score: data.score, feedback: data.feedback }] }
     )
+    return response.data.results?.[0]
+  },
+
+  // Publish/unpublish assignment (convenience method)
+  togglePublish: async (assignmentId: number, is_published: boolean) => {
+    const response = await api.put<AssignmentDTO>(`/lecturer/assignments/${assignmentId}`, { is_published })
     return response.data
   }
 }
 
 // ============================================
-// POST MANAGEMENT (Discussion Posts)
+// POST MANAGEMENT (Discussion Posts - Only Lecturer creates)
 // ============================================
 
 export const lecturerPostApi = {
-  // List posts for a class
-  getPosts: async (classId: number, params?: { keyword?: string }) => {
-    const response = await api.get<{ results: PostDTO[] }>(`/lecturer/classes/${classId}/posts`, { params })
-    return response.data
-  },
-
-  // Get post by ID
-  getPostById: async (classId: number, postId: number) => {
-    const response = await api.get<PostDTO>(`/lecturer/classes/${classId}/posts/${postId}`)
-    return response.data
-  },
-
-  // Create post
+  /**
+   * POST /classes/{class_id}/posts
+   * Tạo post gốc (chỉ dành cho GV)
+   */
   createPost: async (classId: number, data: CreatePostRequest) => {
     const formData = new FormData()
     formData.append('title', data.title)
@@ -396,48 +428,53 @@ export const lecturerPostApi = {
       formData.append('attachment', data.attachment)
     }
 
-    const response = await api.post<PostDTO>(`/lecturer/classes/${classId}/posts`, formData, {
+    const response = await api.post<PostDTO>(`/classes/${classId}/posts`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     return response.data
   },
 
-  // Update post
+  /**
+   * GET /classes/{class_id}/posts
+   * Lấy danh sách posts của một lớp
+   */
+  getPosts: async (classId: number, params?: { keyword?: string }) => {
+    const response = await api.get<{ results: PostDTO[] }>(`/classes/${classId}/posts`, { params })
+    return response.data
+  },
+
+  /**
+   * GET /classes/{class_id}/posts/{post_id}
+   * Lấy chi tiết một post
+   */
+  getPostById: async (classId: number, postId: number) => {
+    const response = await api.get<PostDTO>(`/classes/${classId}/posts/${postId}`)
+    return response.data
+  },
+
+  /**
+   * PUT /classes/{class_id}/posts/{post_id}
+   * Cập nhật post
+   */
   updatePost: async (classId: number, postId: number, data: UpdatePostRequest) => {
-    const response = await api.patch<PostDTO>(`/lecturer/classes/${classId}/posts/${postId}`, data)
+    const response = await api.put<PostDTO>(`/classes/${classId}/posts/${postId}`, data)
     return response.data
   },
 
-  // Delete post
+  /**
+   * DELETE /classes/{class_id}/posts/{post_id}
+   * Xóa post
+   */
   deletePost: async (classId: number, postId: number) => {
-    const response = await api.delete<{ message: string }>(`/lecturer/classes/${classId}/posts/${postId}`)
+    const response = await api.delete<{ message: string }>(`/classes/${classId}/posts/${postId}`)
     return response.data
   },
 
-  // Toggle pin status
-  togglePin: async (classId: number, postId: number, is_pinned: boolean) => {
-    const response = await api.patch<PostDTO>(`/lecturer/classes/${classId}/posts/${postId}`, { is_pinned })
-    return response.data
-  },
-
-  // Like/unlike post
-  toggleLike: async (classId: number, postId: number) => {
-    const response = await api.post<{ message: string; like_count: number }>(
-      `/lecturer/classes/${classId}/posts/${postId}/like`
-    )
-    return response.data
-  },
-
-  // Get comments for a post
-  getComments: async (classId: number, postId: number) => {
-    const response = await api.get<{ results: PostCommentDTO[] }>(
-      `/lecturer/classes/${classId}/posts/${postId}/comments`
-    )
-    return response.data
-  },
-
-  // Create comment
-  createComment: async (classId: number, postId: number, data: CreateCommentRequest) => {
+  /**
+   * POST /posts/{post_id}/comments
+   * Tạo comment cho một post (cho GV hoặc HS)
+   */
+  createComment: async (postId: number, data: CreateCommentRequest) => {
     const formData = new FormData()
     formData.append('content', data.content)
     if (data.parent_id) {
@@ -447,17 +484,38 @@ export const lecturerPostApi = {
       formData.append('attachment', data.attachment)
     }
 
-    const response = await api.post<PostCommentDTO>(`/lecturer/classes/${classId}/posts/${postId}/comments`, formData, {
+    const response = await api.post<PostCommentDTO>(`/posts/${postId}/comments`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     return response.data
   },
 
-  // Delete comment
-  deleteComment: async (classId: number, postId: number, commentId: number) => {
-    const response = await api.delete<{ message: string }>(
-      `/lecturer/classes/${classId}/posts/${postId}/comments/${commentId}`
+  /**
+   * GET /posts/{post_id}/comments
+   * Lấy danh sách comments của một post
+   */
+  getComments: async (postId: number) => {
+    const response = await api.get<{ results: PostCommentDTO[] }>(`/posts/${postId}/comments`)
+    return response.data
+  },
+
+  // Toggle pin status (convenience method)
+  togglePin: async (classId: number, postId: number, is_pinned: boolean) => {
+    const response = await api.put<PostDTO>(`/classes/${classId}/posts/${postId}`, { is_pinned })
+    return response.data
+  },
+
+  // Like/unlike post
+  toggleLike: async (classId: number, postId: number) => {
+    const response = await api.post<{ message: string; like_count: number }>(
+      `/classes/${classId}/posts/${postId}/like`
     )
+    return response.data
+  },
+
+  // Delete comment
+  deleteComment: async (postId: number, commentId: number) => {
+    const response = await api.delete<{ message: string }>(`/posts/${postId}/comments/${commentId}`)
     return response.data
   }
 }

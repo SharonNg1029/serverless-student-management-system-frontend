@@ -45,8 +45,7 @@ export default [
         route('lecturer/my-courses', './pages/lecturer/my-courses.tsx'),
         route('lecturer/classes/:classId', './pages/lecturer/classes/[classId]/index.tsx'),
 
-        // Student routes
-        route('student/dashboard', './pages/student/dashboard.tsx'),
+        // Student routessss
         route('student/my-courses', './pages/student/my-courses.tsx'),
         route('student/all-courses', './pages/student/all-courses.tsx'),
         route('student/calendar', './pages/student/calendar.tsx'),

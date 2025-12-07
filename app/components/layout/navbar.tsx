@@ -116,15 +116,15 @@ export default function Navbar() {
       case 'Lecturer':
         return [
           { label: 'Dashboard', href: '/lecturer/dashboard' },
-          { label: 'Lớp học của tôi', href: '/lecturer/my-courses' }
+          { label: 'My Courses', href: '/lecturer/my-courses' }
         ]
 
       case 'Student':
         return [
-          { label: 'Dashboard', href: '/student/dashboard' },
-          { label: 'Lớp của tôi', href: '/student/my-courses' },
-          { label: 'Tất cả khóa học', href: '/student/all-courses' },
-          { label: 'Xếp hạng', href: '/student/ranking' }
+          { label: 'Home', href: '/home' },
+          { label: 'My Courses', href: '/student/my-courses' },
+          { label: 'All Courses', href: '/student/all-courses' },
+          { label: 'Ranking', href: '/student/ranking' }
         ]
 
       default:
@@ -178,7 +178,7 @@ export default function Navbar() {
                 <Search size={18} style={{ color: 'rgba(255, 255, 255, 0.7)' }} />
                 <input
                   type='text'
-                  placeholder='Tìm kiếm...'
+                  placeholder='Search...'
                   value={searchQuery}
                   onChange={handleSearchChange}
                   onFocus={() => searchQuery && setShowResults(true)}
@@ -255,7 +255,7 @@ export default function Navbar() {
                     ))
                   ) : (
                     <div style={{ padding: '1rem', textAlign: 'center', color: '#666', fontSize: '14px' }}>
-                      Không tìm thấy kết quả
+                      No results found
                     </div>
                   )}
                 </div>

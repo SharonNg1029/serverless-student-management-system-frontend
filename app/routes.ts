@@ -40,17 +40,20 @@ export default [
 
         route('lecturer/dashboard', './pages/lecturer/dashboard.tsx'),
 
-        // Lecturer routes - My Courses and Class Detail (New Clean Structure)
-        route('lecturer', './pages/lecturer/index.tsx'),  // Redirect to my-courses
+        // Lecturer routes - My Courses and Class Detail
+        route('lecturer', './pages/lecturer/index.tsx'),
         route('lecturer/my-courses', './pages/lecturer/my-courses.tsx'),
         route('lecturer/classes/:classId', './pages/lecturer/classes/[classId]/index.tsx'),
+        route('lecturer/classes/:classId/assignments/:assignmentId', './pages/lecturer/classes/[classId]/assignment-detail.tsx'),
 
-        // Student routessss
+        // Student routes
         route('student/my-courses', './pages/student/my-courses.tsx'),
         route('student/all-courses', './pages/student/all-courses.tsx'),
         route('student/calendar', './pages/student/calendar.tsx'),
         route('student/ranking', './pages/student/ranking.tsx'),
-        route('student/notifications-receive', './pages/student/notifications-receive.tsx')
+        route('student/notifications-receive', './pages/student/notifications-receive.tsx'),
+        route('student/course-details/:classId', './pages/student/course-details.tsx'),
+        route('student/course-details/:classId/assignment/:assignmentId', './pages/student/assignment-detail.tsx')
       ])
     ]
   }

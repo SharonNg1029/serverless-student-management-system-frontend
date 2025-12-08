@@ -71,8 +71,6 @@
     "less": "latest",
     "lightningcss": "latest",
     "lucide-react": "^0.454.0",
-    "next": "16.0.5",
-    "next-themes": "latest",
     "react": "^19.1.1",
     "react-date-range": "^2.0.1",
     "react-day-picker": "^9.11.3",

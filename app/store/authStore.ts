@@ -131,12 +131,6 @@ export const useAuthStore = create<AuthState>()(
             const currentUser = await getCurrentUser()
             const userAttributes = await fetchUserAttributes()
 
-            // Debug: Log để kiểm tra
-            console.log('=== DEBUG LOGIN ===')
-            console.log('User Attributes:', JSON.stringify(userAttributes, null, 2))
-            console.log('ID Token Payload:', JSON.stringify(tokens.idToken?.payload, null, 2))
-            console.log('All ID Token:', tokens.idToken)
-
             // Lấy role từ nhiều nguồn có thể:
             // 1. ID Token payload (custom:role)
             // 2. User attributes (custom:role hoặc custom:Role)
@@ -145,30 +139,19 @@ export const useAuthStore = create<AuthState>()(
             const attrRole = userAttributes['custom:role'] || userAttributes['custom:Role'] || userAttributes.role
             let finalRole = idTokenRole || attrRole
 
-            console.log('ID Token Role:', idTokenRole)
-            console.log('Attributes Role:', attrRole)
-            console.log('Final Role:', finalRole)
-
             // If no role found in Cognito, try to fetch from DynamoDB
             if (!finalRole) {
-              console.log('⚠️ No role in Cognito, fetching from DynamoDB...')
               try {
                 const dynamoRole = await fetchUserRoleFromDynamoDB(currentUser.userId, tokens.accessToken.toString())
                 if (dynamoRole) {
                   finalRole = dynamoRole
-                  console.log('✅ Role from DynamoDB:', dynamoRole)
-                } else {
-                  console.log('⚠️ No role in DynamoDB either, using default')
                 }
               } catch (error) {
-                console.error('Failed to fetch role from DynamoDB:', error)
+                // Silently fail, will use default role
               }
             }
 
-            console.log('Final Role will be:', finalRole || 'Student (DEFAULT)')
-
             const roleValue = (finalRole as 'Student' | 'Lecturer' | 'Admin') || 'Student'
-            console.log('=== END DEBUG ===')
 
             const userData: User = {
               id: currentUser.userId,
@@ -185,7 +168,6 @@ export const useAuthStore = create<AuthState>()(
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             }
-            console.log(userData)
 
             // Store tokens và user info
             set({

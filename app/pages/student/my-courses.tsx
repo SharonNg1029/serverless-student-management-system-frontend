@@ -1,258 +1,300 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { BookOpen, Users, Calendar, Loader2, LogOut } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { Box, Button, Text, VStack, Spinner, Center } from '@chakra-ui/react'
+import { ErrorDisplay } from '../../components/ui/ErrorDisplay'
+import { BookOpen, GraduationCap, Plus } from 'lucide-react'
+import api from '../../utils/axios'
+import CourseCard, { type EnrolledClass } from '../../components/ui/CourseCard'
+import PageHeader from '../../components/ui/PageHeader'
+import { useAuthStore } from '../../store/authStore'
+import { toaster } from '../../components/ui/toaster'
 
-interface Course {
-  id: string
-  name: string
-  code: string
-  subjectName: string
-  lecturerName: string
-  schedule: string
-  enrolledAt: string
-  studentCount: number
-  status: 'ongoing' | 'completed' | 'upcoming'
-}
+// ============================================
+// MOCK DATA - Set to true to use mock data
+// ============================================
+const USE_MOCK_DATA = true
 
-const MOCK_COURSES: Course[] = [
+const MOCK_COURSES: EnrolledClass[] = [
   {
-    id: '1',
-    name: 'Lập trình Web 101 (C001)',
-    code: 'C001',
-    subjectName: 'Lập trình Web',
-    lecturerName: 'Nguyễn Văn A',
-    schedule: 'T3, T5 10:00 - 11:30',
-    enrolledAt: '2024-09-15',
-    studentCount: 35,
-    status: 'ongoing'
+    classId: 'CS101-01',
+    subjectId: 'CS101',
+    subjectName: 'Nhập môn lập trình',
+    lecturerName: 'Nguyễn Văn An',
+    totalStudents: 45,
+    enrolledAt: '2024-09-01T08:00:00Z'
   },
   {
-    id: '2',
-    name: 'Cơ sở dữ liệu (D001)',
-    code: 'D001',
+    classId: 'CS201-02',
+    subjectId: 'CS201',
+    subjectName: 'Cấu trúc dữ liệu và giải thuật',
+    lecturerName: 'Trần Thị Bình',
+    totalStudents: 38,
+    enrolledAt: '2024-09-02T10:30:00Z'
+  },
+  {
+    classId: 'CS301-01',
+    subjectId: 'CS301',
     subjectName: 'Cơ sở dữ liệu',
-    lecturerName: 'Trần Thị B',
-    schedule: 'T2, T4 14:00 - 15:30',
-    enrolledAt: '2024-09-16',
-    studentCount: 32,
-    status: 'ongoing'
+    lecturerName: 'Lê Hoàng Cường',
+    totalStudents: 42,
+    enrolledAt: '2024-09-03T14:00:00Z'
   },
   {
-    id: '3',
-    name: 'Kiến trúc máy tính (A001)',
-    code: 'A001',
-    subjectName: 'Kiến trúc máy tính',
-    lecturerName: 'Phạm Văn C',
-    schedule: 'T6 09:00 - 11:30',
-    enrolledAt: '2024-09-17',
-    studentCount: 28,
-    status: 'ongoing'
+    classId: 'CS401-03',
+    subjectId: 'CS401',
+    subjectName: 'Phát triển ứng dụng Web',
+    lecturerName: 'Phạm Minh Đức',
+    totalStudents: 35,
+    enrolledAt: '2024-09-05T09:15:00Z'
   },
   {
-    id: '4',
-    name: 'Lập trình OOP (C002)',
-    code: 'C002',
-    subjectName: 'Lập trình OOP',
-    lecturerName: 'Lê Văn D',
-    schedule: 'T3 15:00 - 16:30',
-    enrolledAt: '2024-09-10',
-    studentCount: 40,
-    status: 'ongoing'
-  },
-  {
-    id: '5',
-    name: 'Mạng máy tính (N001)',
-    code: 'N001',
-    subjectName: 'Mạng máy tính',
-    lecturerName: 'Hoàng Thị E',
-    schedule: 'T4, T6 13:00 - 14:30',
-    enrolledAt: '2024-09-12',
-    studentCount: 30,
-    status: 'ongoing'
+    classId: 'CS501-01',
+    subjectId: 'CS501',
+    subjectName: 'Trí tuệ nhân tạo',
+    lecturerName: 'Hoàng Thị Lan',
+    totalStudents: 30,
+    enrolledAt: '2024-09-10T11:00:00Z'
   }
 ]
 
+// Import types from centralized types
+import type { StudentEnrolledClassDTO, EnrolledClassesResponse } from '../../types'
+
 export default function MyCoursesRoute() {
-  const [courses, setCourses] = useState<Course[]>(MOCK_COURSES)
-  const [loading, setLoading] = useState(false)
-  const [filter, setFilter] = useState<'all' | 'ongoing' | 'completed'>('ongoing')
+  const [courses, setCourses] = useState<EnrolledClass[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchMyCourses()
-  }, [])
+  const { user } = useAuthStore()
 
-  const fetchMyCourses = async () => {
+  const fetchMyCourses = useCallback(async () => {
+    // Use mock data for UI testing
+    if (USE_MOCK_DATA) {
+      setLoading(true)
+      await new Promise((resolve) => setTimeout(resolve, 500)) // Simulate loading
+      setCourses(MOCK_COURSES)
+      setLoading(false)
+      return
+    }
+
+    if (!user?.id) {
+      setError('Vui lòng đăng nhập để xem danh sách lớp học.')
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
+    setError(null)
     try {
-      // TODO: Replace with API call
-      await new Promise((resolve) => setTimeout(resolve, 300))
-    } catch (error) {
-      console.error('Failed to fetch courses:', error)
+      // Call API to get enrolled classes
+      const response = await api.get<EnrolledClassesResponse>('/student/classes/class-enrolled', {
+        params: {
+          student_id: user.id
+        }
+      })
+
+      // Map API response to EnrolledClass format
+      const mappedCourses: EnrolledClass[] = (response.data.results || []).map((c: StudentEnrolledClassDTO) => ({
+        classId: c.class_id,
+        subjectId: c.class_id, // Using class_id as subjectId if not provided
+        subjectName: c.subjectName || c.name,
+        lecturerName: c.lecturerName,
+        totalStudents: c.student_count,
+        enrolledAt: c.enrolled_at
+      }))
+
+      setCourses(mappedCourses)
+    } catch (err: any) {
+      console.error('Failed to fetch enrolled courses:', err)
+      const errorMessage = err.response?.data?.message || 'Không thể tải danh sách lớp học. Vui lòng thử lại.'
+      setError(errorMessage)
     } finally {
       setLoading(false)
     }
+  }, [user?.id])
+
+  useEffect(() => {
+    fetchMyCourses()
+  }, [fetchMyCourses])
+
+  const handleViewDetails = (classId: string) => {
+    window.location.href = `/student/course-details/${classId}`
   }
 
-  const handleUnenroll = async (courseId: string) => {
-    if (!window.confirm('Bạn có chắc muốn hủy đăng ký lớp này?')) return
+  const handleUnenroll = async (classId: string) => {
+    if (!user?.id) {
+      toaster.error({
+        title: 'Lỗi',
+        description: 'Vui lòng đăng nhập để thực hiện thao tác này.'
+      })
+      throw new Error('User not authenticated')
+    }
 
     try {
-      // TODO: Call unenroll API
-      setCourses(courses.filter((c) => c.id !== courseId))
-    } catch (error) {
-      console.error('Failed to unenroll:', error)
+      // Call unenroll API - POST /student/enroll with action='unenroll'
+      await api.post('/student/enroll', {
+        class_id: classId,
+        action: 'unenroll',
+        studentId: user.id
+      })
+
+      // Remove from local state on success
+      setCourses(courses.filter((c) => c.classId !== classId))
+
+      toaster.success({
+        title: 'Thành công',
+        description: 'Đã hủy đăng ký lớp học thành công.'
+      })
+    } catch (err: any) {
+      console.error('Failed to unenroll:', err)
+      const errorMessage = err.response?.data?.message || 'Không thể hủy đăng ký lớp học. Vui lòng thử lại.'
+      toaster.error({
+        title: 'Lỗi',
+        description: errorMessage
+      })
+      throw err // Re-throw to let CourseCard handle error state
     }
   }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'ongoing':
-        return 'bg-blue-100 text-blue-700'
-      case 'completed':
-        return 'bg-green-100 text-green-700'
-      case 'upcoming':
-        return 'bg-slate-100 text-slate-700'
-      default:
-        return 'bg-slate-100 text-slate-700'
-    }
-  }
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'ongoing':
-        return 'Đang học'
-      case 'completed':
-        return 'Hoàn thành'
-      case 'upcoming':
-        return 'Sắp diễn ra'
-      default:
-        return 'Chưa xác định'
-    }
-  }
-
-  const filteredCourses = filter === 'all' ? courses : courses.filter((c) => c.status === filter)
 
   if (loading) {
     return (
-      <div className='min-h-[60vh] flex items-center justify-center'>
-        <div className='text-center'>
-          <Loader2 size={40} className='text-[#dd7323] animate-spin mx-auto mb-3' />
-          <p className='text-slate-600'>Đang tải lớp học...</p>
-        </div>
-      </div>
+      <Box minH='60vh' display='flex' alignItems='center' justifyContent='center'>
+        <VStack gap={4} colorPalette='orange'>
+          <Spinner size='xl' color='colorPalette.500' borderWidth='4px' />
+          <Text color='fg.muted' fontWeight='medium'>
+            Loading courses...
+          </Text>
+        </VStack>
+      </Box>
     )
   }
 
+  if (error) {
+    // Detect unauthenticated error
+    const isUnauth = error.toLowerCase().includes('đăng nhập') || error.toLowerCase().includes('login')
+    return (
+      <ErrorDisplay
+        variant={isUnauth ? 'unauthenticated' : 'fetch'}
+        message={error}
+        onRetry={!isUnauth ? fetchMyCourses : undefined}
+        retryLabel={!isUnauth ? undefined : 'Đăng nhập'}
+      />
+    )
+  }
+
+  // Main UI
   return (
-    <div className='w-full py-8 px-4 sm:px-6 lg:px-8 bg-slate-50'>
-      <div className='max-w-6xl mx-auto'>
+    <Box w='full' py={8} px={{ base: 4, sm: 6, lg: 8 }} bg='white' minH='100vh'>
+      <Box maxW='6xl' mx='auto'>
         {/* Header */}
-        <div className='mb-8 flex items-center justify-between'>
-          <div>
-            <h1 className='text-3xl font-bold text-slate-900'>Lớp học của tôi</h1>
-            <p className='text-slate-600 mt-1'>Quản lý các lớp học bạn đã đăng ký</p>
-          </div>
-          <button
+        <PageHeader icon={GraduationCap} title='Lớp học của tôi' subtitle='Quản lý các lớp học bạn đã đăng ký'>
+          <Button
+            bg='#dd7323'
+            color='white'
+            size='lg'
+            borderRadius='xl'
+            shadow='md'
+            gap={2}
+            px={6}
+            fontWeight='semibold'
+            _hover={{
+              bg: '#c5651f',
+              shadow: '0 8px 25px -5px rgba(237, 137, 54, 0.5)',
+              transform: 'translateY(-2px)'
+            }}
+            transition='all 0.2s ease-in-out'
             onClick={() => (window.location.href = '/student/all-courses')}
-            className='px-6 py-3 bg-[#dd7323] text-white rounded-xl hover:bg-[#c2621a] font-medium transition-colors'
           >
-            Đăng ký thêm lớp
-          </button>
-        </div>
+            <Plus size={18} />
+            Đăng ký lớp mới
+          </Button>
+        </PageHeader>
 
-        {/* Filter Tabs */}
-        <div className='flex gap-2 mb-6'>
-          {(['all', 'ongoing', 'completed'] as const).map((status) => (
-            <button
-              key={status}
-              onClick={() => setFilter(status)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                filter === status
-                  ? 'bg-[#dd7323] text-white'
-                  : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'
-              }`}
+        {/* Courses Grid or Suggest Enroll */}
+        {courses.length === 0 ? (
+          <Center py={20}>
+            <VStack
+              gap={8}
+              p={12}
+              bg='white'
+              borderRadius='3xl'
+              shadow='xl'
+              border='2px dashed'
+              borderColor='orange.200'
+              maxW='lg'
+              w='full'
+              position='relative'
+              overflow='hidden'
+              _before={{
+                content: '""',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                height: '4px',
+                bgGradient: 'to-r',
+                gradientFrom: 'orange.400',
+                gradientTo: 'amber.400'
+              }}
             >
-              {status === 'all' ? 'Tất cả' : status === 'ongoing' ? 'Đang học' : 'Hoàn thành'}
-            </button>
-          ))}
-        </div>
-
-        {/* Courses Grid */}
-        {filteredCourses.length === 0 ? (
-          <div className='bg-white rounded-xl border border-slate-200 p-12 text-center'>
-            <BookOpen size={48} className='mx-auto text-slate-300 mb-4' />
-            <p className='text-slate-500 mb-4'>Bạn chưa đăng ký lớp học nào</p>
-            <button
-              onClick={() => (window.location.href = '/student/all-courses')}
-              className='px-6 py-2 bg-[#dd7323] text-white rounded-lg hover:bg-[#c2621a] font-medium'
-            >
-              Đăng ký ngay
-            </button>
-          </div>
-        ) : (
-          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
-            {filteredCourses.map((course) => (
-              <div
-                key={course.id}
-                className='bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-lg transition-all hover:-translate-y-1'
+              <Box p={6} borderRadius='full' bg='orange.50' shadow='inner' border='3px solid' borderColor='orange.100'>
+                <BookOpen size={64} color='#dd7323' />
+              </Box>
+              <VStack gap={3}>
+                <Text
+                  fontWeight='bold'
+                  fontSize='2xl'
+                  bgGradient='to-r'
+                  gradientFrom='gray.800'
+                  gradientTo='gray.600'
+                  bgClip='text'
+                >
+                  Chưa có lớp học nào!
+                </Text>
+                <Text color='gray.600' textAlign='center' fontSize='md' lineHeight='1.7' maxW='sm'>
+                  Bạn chưa đăng ký lớp học nào. Hãy khám phá và đăng ký ngay!
+                </Text>
+              </VStack>
+              <Button
+                bg='#dd7323'
+                color='white'
+                size='xl'
+                borderRadius='xl'
+                shadow='lg'
+                px={8}
+                _hover={{
+                  bg: '#c5651f',
+                  shadow: 'xl',
+                  transform: 'translateY(-2px)',
+                  transition: 'all 0.2s'
+                }}
+                onClick={() => (window.location.href = '/student/all-courses')}
               >
-                {/* Header */}
-                <div className='bg-gradient-to-r from-[#dd7323] to-[#ff8c42] p-4 text-white'>
-                  <div className='flex items-start justify-between'>
-                    <div>
-                      <p className='text-sm opacity-90'>{course.subjectName}</p>
-                      <h3 className='text-lg font-bold mt-1'>{course.name}</h3>
-                    </div>
-                    <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${getStatusBadge(course.status)}`}>
-                      {getStatusLabel(course.status)}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Content */}
-                <div className='p-4 space-y-3'>
-                  <div className='flex items-center gap-2 text-slate-600'>
-                    <Users size={16} />
-                    <span className='text-sm'>{course.lecturerName}</span>
-                  </div>
-
-                  <div className='flex items-center gap-2 text-slate-600'>
-                    <Calendar size={16} />
-                    <span className='text-sm'>{course.schedule}</span>
-                  </div>
-
-                  <div className='flex items-center gap-2 text-slate-600'>
-                    <BookOpen size={16} />
-                    <span className='text-sm'>{course.studentCount} sinh viên</span>
-                  </div>
-
-                  <p className='text-xs text-slate-400'>
-                    Đăng ký: {new Date(course.enrolledAt).toLocaleDateString('vi-VN')}
-                  </p>
-                </div>
-
-                {/* Footer */}
-                <div className='border-t border-slate-100 p-4 flex gap-2'>
-                  <button
-                    onClick={() => (window.location.href = `/student/course-details/${course.id}`)}
-                    className='flex-1 px-3 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium text-sm transition-colors'
-                  >
-                    Xem chi tiết
-                  </button>
-                  <button
-                    onClick={() => handleUnenroll(course.id)}
-                    className='px-3 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-medium text-sm transition-colors'
-                    title='Hủy đăng ký'
-                  >
-                    <LogOut size={16} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+                <BookOpen size={20} />
+                Khám phá và đăng ký lớp học
+              </Button>
+            </VStack>
+          </Center>
+        ) : (
+          <Box w='full'>
+            {/* Grid với Flexbox để căn giữa các card khi không đủ 3 */}
+            <Box display='flex' flexWrap='wrap' justifyContent='center' gap={8} w='full'>
+              {courses.map((course) => (
+                <Box
+                  key={course.classId}
+                  w={{ base: 'full', md: 'calc(50% - 16px)', lg: 'calc(33.333% - 22px)' }}
+                  maxW='360px'
+                  display='flex'
+                  justifyContent='center'
+                >
+                  <CourseCard course={course} onViewDetails={handleViewDetails} onUnenroll={handleUnenroll} />
+                </Box>
+              ))}
+            </Box>
+          </Box>
         )}
-      </div>
-    </div>
+      </Box>
+    </Box>
   )
 }

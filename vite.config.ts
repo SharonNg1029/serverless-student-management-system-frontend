@@ -7,7 +7,14 @@ import devtoolsJson from 'vite-plugin-devtools-json'
 export default defineConfig({
   server: {
     // thêm phần server để chạy dev CSR
-    port: 3000
+    port: 3000,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+        secure: false
+      }
+    }
   },
   preview: {
     // thêm phần preview để chạy build CSR

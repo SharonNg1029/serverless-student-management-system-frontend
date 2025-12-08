@@ -1,331 +1,405 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router'
-import { BookOpen, Users, TrendingUp, FileText, ChevronRight, Loader2, Award, Calendar, Clock } from 'lucide-react'
-import { lecturerClassApi, lecturerRankingApi } from '../../services/lecturerApi'
-import type { ClassDTO, RankingDTO } from '../../types'
+import { useQuery } from '@tanstack/react-query'
+import {
+  Box,
+  Grid,
+  GridItem,
+  Text,
+  Heading,
+  Badge,
+  Card,
+  HStack,
+  VStack,
+  Circle,
+  Spinner,
+  Center,
+  IconButton,
+  Button
+} from '@chakra-ui/react'
+import {
+  Bell,
+  BookOpen,
+  Calendar,
+  Award,
+  Megaphone,
+  ChevronLeft,
+  ChevronRight,
+  ChevronRight as ArrowRight,
+  FileText,
+  Users
+} from 'lucide-react'
+import { useAuthStore } from '../../store/authStore'
+import PageHeader from '../../components/ui/PageHeader'
+import StatsCard from '../../components/ui/StatsCard'
+import { lecturerClassApi, lecturerNotificationApi } from '../../services/lecturerApi'
+import type { ClassDTO, NotificationDTO } from '../../types'
 
-interface ClassWithAvgScore extends ClassDTO {
-  avg_score?: number
+// ============================================
+// MOCK DATA - Set to true to use mock data
+// ============================================
+const USE_MOCK_DATA = true
+
+const MOCK_CLASSES: ClassDTO[] = [
+  { id: 1, name: 'CS101-01', subject_id: 1, subject_name: 'Nhập môn lập trình', teacher_id: 1, semester: 'HK1', academic_year: '2024-2025', student_count: 45, status: 1, created_at: '', updated_at: '' },
+  { id: 2, name: 'CS201-02', subject_id: 2, subject_name: 'Cấu trúc dữ liệu', teacher_id: 1, semester: 'HK1', academic_year: '2024-2025', student_count: 38, status: 1, created_at: '', updated_at: '' },
+  { id: 3, name: 'CS301-01', subject_id: 3, subject_name: 'Cơ sở dữ liệu', teacher_id: 1, semester: 'HK1', academic_year: '2024-2025', student_count: 42, status: 1, created_at: '', updated_at: '' }
+]
+
+const MOCK_NOTIFICATIONS: NotificationDTO[] = [
+  { id: 1, title: 'Thông báo nghỉ lễ 2/9', content: 'Nhà trường thông báo lịch nghỉ lễ Quốc khánh 2/9...', sender_id: 0, created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(), type: 'received' },
+  { id: 2, title: 'Cập nhật quy chế đào tạo', content: 'Phòng Đào tạo thông báo về việc cập nhật quy chế...', sender_id: 0, created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), type: 'received' },
+  { id: 3, title: 'Hội thảo khoa học', content: 'Khoa CNTT tổ chức hội thảo khoa học vào ngày...', sender_id: 0, created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), type: 'received' },
+  { id: 4, title: 'Lịch họp khoa tháng 12', content: 'Thông báo lịch họp khoa định kỳ tháng 12/2024...', sender_id: 0, created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), type: 'received' },
+  { id: 5, title: 'Đăng ký đề tài NCKH', content: 'Thông báo về việc đăng ký đề tài nghiên cứu khoa học...', sender_id: 0, created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), type: 'received' }
+]
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+const getVietnameseDay = (day: number): string => {
+  const days = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy']
+  return days[day]
+}
+
+const formatDate = (date: Date): string => {
+  const day = date.getDate().toString().padStart(2, '0')
+  const month = (date.getMonth() + 1).toString().padStart(2, '0')
+  const year = date.getFullYear()
+  return `${day}/${month}/${year}`
+}
+
+const getRelativeTime = (dateStr: string): string => {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / (1000 * 60))
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+  if (diffMins < 1) return 'Vừa xong'
+  if (diffMins < 60) return `${diffMins} phút trước`
+  if (diffHours < 24) return `${diffHours} giờ trước`
+  if (diffDays === 1) return 'Hôm qua'
+  if (diffDays < 7) return `${diffDays} ngày trước`
+  return formatDate(date)
+}
+
+// Calendar constants
+const DAYS_SHORT = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
+
+// Extended CalendarDay for lecturer dashboard
+interface LecturerCalendarDay {
+  date: Date
+  isCurrentMonth: boolean
+  isToday: boolean
+  hasDeadline: boolean
 }
 
 export default function LecturerDashboard() {
   const navigate = useNavigate()
-  const [classes, setClasses] = useState<ClassWithAvgScore[]>([])
-  const [selectedClass, setSelectedClass] = useState<ClassWithAvgScore | null>(null)
-  const [classRanking, setClassRanking] = useState<RankingDTO[]>([])
-  const [loading, setLoading] = useState(true)
-  const [loadingRanking, setLoadingRanking] = useState(false)
+  const { user } = useAuthStore()
+  const [currentDate, setCurrentDate] = useState(new Date())
+  const today = new Date()
 
-  useEffect(() => {
-    fetchClasses()
-  }, [])
-
-  const fetchClasses = async () => {
-    try {
-      setLoading(true)
-      const response = await lecturerClassApi.getClasses()
-      setClasses(response.results || [])
-
-      // Select first class by default
-      if (response.results && response.results.length > 0) {
-        handleSelectClass(response.results[0])
+  // Fetch classes
+  const { data: classesData, isLoading: classesLoading } = useQuery({
+    queryKey: ['lecturer-classes'],
+    queryFn: async () => {
+      if (USE_MOCK_DATA) {
+        await new Promise((r) => setTimeout(r, 300))
+        return { results: MOCK_CLASSES }
       }
-    } catch (error) {
-      console.error('Error fetching classes:', error)
-    } finally {
-      setLoading(false)
+      return lecturerClassApi.getClasses()
     }
-  }
+  })
 
-  const handleSelectClass = async (cls: ClassDTO) => {
-    setSelectedClass(cls)
-    setLoadingRanking(true)
-
-    try {
-      const rankingRes = await lecturerRankingApi.getRanking(cls.id)
-      setClassRanking(rankingRes.results || [])
-
-      // Calculate avg score
-      if (rankingRes.results && rankingRes.results.length > 0) {
-        const avgScore = rankingRes.results.reduce((sum, r) => sum + r.score, 0) / rankingRes.results.length
-        setSelectedClass({ ...cls, avg_score: avgScore })
+  // Fetch notifications
+  const { data: notificationsData, isLoading: notificationsLoading } = useQuery({
+    queryKey: ['lecturer-notifications'],
+    queryFn: async () => {
+      if (USE_MOCK_DATA) {
+        await new Promise((r) => setTimeout(r, 300))
+        return { results: MOCK_NOTIFICATIONS }
       }
-    } catch (error) {
-      console.error('Error fetching ranking:', error)
-      setClassRanking([])
-    } finally {
-      setLoadingRanking(false)
+      return lecturerNotificationApi.getReceivedNotifications()
     }
-  }
+  })
 
+  const classes = classesData?.results || []
+  const notifications = notificationsData?.results || []
+  const unreadCount = notifications.filter((n) => !n.is_read).length
   const activeClasses = classes.filter((c) => c.status === 1).length
   const totalStudents = classes.reduce((sum, c) => sum + (c.student_count || 0), 0)
 
-  if (loading) {
-    return (
-      <div className='min-h-[60vh] flex items-center justify-center'>
-        <div className='text-center'>
-          <Loader2 size={40} className='text-[#dd7323] animate-spin mx-auto mb-3' />
-          <p className='text-slate-600'>Đang tải dữ liệu...</p>
-        </div>
-      </div>
-    )
-  }
+  const statsLoading = classesLoading || notificationsLoading
+
+  // Generate mini calendar days
+  const calendarDays = useMemo<LecturerCalendarDay[]>(() => {
+    const year = currentDate.getFullYear()
+    const month = currentDate.getMonth()
+
+    const firstDay = new Date(year, month, 1)
+    const lastDay = new Date(year, month + 1, 0)
+
+    const startDate = new Date(firstDay)
+    startDate.setDate(startDate.getDate() - firstDay.getDay())
+
+    const endDate = new Date(lastDay)
+    endDate.setDate(endDate.getDate() + (6 - lastDay.getDay()))
+
+    const days: LecturerCalendarDay[] = []
+    const current = new Date(startDate)
+    const todayDate = new Date()
+    todayDate.setHours(0, 0, 0, 0)
+
+    // Mock deadlines (7 days after assignment deadlines)
+    const mockDeadlineDays = [10, 15, 22, 28]
+
+    while (current <= endDate) {
+      days.push({
+        date: new Date(current),
+        isCurrentMonth: current.getMonth() === month,
+        isToday: current.getTime() === todayDate.getTime(),
+        hasDeadline: mockDeadlineDays.includes(current.getDate()) && current.getMonth() === month
+      })
+      current.setDate(current.getDate() + 1)
+    }
+
+    return days
+  }, [currentDate])
+
+  // Calendar navigation
+  const goToPrevMonth = () => setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
+  const goToNextMonth = () => setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
 
   return (
-    <div className='space-y-6 pb-8'>
-      {/* Header */}
-      <div className='flex flex-col md:flex-row md:items-end justify-between gap-4'>
-        <div>
-          <h1 className='text-2xl font-bold text-slate-900'>Dashboard Giảng viên</h1>
-          <p className='text-slate-500 mt-1'>Tổng quan hoạt động giảng dạy của bạn</p>
-        </div>
-        <div className='flex items-center gap-3'>
-          <button
-            onClick={() => navigate('/lecturer/classes-management/form')}
-            className='flex items-center gap-2 px-4 py-2 bg-[#dd7323] text-white rounded-xl hover:bg-[#c2621a] font-medium transition-all shadow-lg shadow-orange-200 text-sm'
-          >
-            <BookOpen size={16} />
-            Tạo lớp mới
-          </button>
-        </div>
-      </div>
+    <Box minH='100vh' bg='white' py={8} px={{ base: 4, md: 6, lg: 8 }}>
+      <Box maxW='1400px' mx='auto'>
+        {/* Hero Section */}
+        <Box mb={8}>
+          <PageHeader
+            icon={Award}
+            title={`Chào mừng quay trở lại, ${user?.fullName || 'Giảng viên'}!`}
+            subtitle={`Hôm nay là ${getVietnameseDay(today.getDay())}, ngày ${formatDate(today)}`}
+          />
 
-      {/* Stats Cards - Removed avg_score */}
-      <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4'>
-        <div className='bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all'>
-          <div className='flex items-center justify-between'>
-            <div>
-              <p className='text-sm font-medium text-slate-500'>Tổng số lớp</p>
-              <h3 className='text-2xl font-bold text-slate-800 mt-1'>{classes.length}</h3>
-            </div>
-            <div className='p-3 bg-blue-50 rounded-xl text-blue-500'>
-              <BookOpen size={24} />
-            </div>
-          </div>
-        </div>
+          {/* Quick Stats Grid */}
+          <Grid templateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }} gap={4} px={6}>
+            <StatsCard
+              label='Thông báo chưa đọc'
+              value={unreadCount}
+              icon={Bell}
+              isLoading={statsLoading}
+              onClick={() => navigate('/lecturer/notifications')}
+            />
+            <StatsCard
+              label='Lớp đang giảng dạy'
+              value={activeClasses}
+              icon={BookOpen}
+              isLoading={statsLoading}
+              onClick={() => navigate('/lecturer/my-courses')}
+            />
+            <StatsCard
+              label='Tổng sinh viên'
+              value={totalStudents}
+              icon={Users}
+              isLoading={statsLoading}
+            />
+            <StatsCard
+              label='Bài tập chưa chấm'
+              value='--'
+              icon={FileText}
+              isLoading={statsLoading}
+            />
+          </Grid>
+        </Box>
 
-        <div className='bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all'>
-          <div className='flex items-center justify-between'>
-            <div>
-              <p className='text-sm font-medium text-slate-500'>Lớp đang mở</p>
-              <h3 className='text-2xl font-bold text-emerald-600 mt-1'>{activeClasses}</h3>
-            </div>
-            <div className='p-3 bg-emerald-50 rounded-xl text-emerald-500'>
-              <TrendingUp size={24} />
-            </div>
-          </div>
-        </div>
-
-        <div className='bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all'>
-          <div className='flex items-center justify-between'>
-            <div>
-              <p className='text-sm font-medium text-slate-500'>Tổng sinh viên</p>
-              <h3 className='text-2xl font-bold text-[#dd7323] mt-1'>{totalStudents}</h3>
-            </div>
-            <div className='p-3 bg-orange-50 rounded-xl text-[#dd7323]'>
-              <Users size={24} />
-            </div>
-          </div>
-        </div>
-
-        <div className='bg-white p-5 rounded-2xl shadow-sm border border-slate-100 hover:shadow-md transition-all'>
-          <div className='flex items-center justify-between'>
-            <div>
-              <p className='text-sm font-medium text-slate-500'>Bài tập đã giao</p>
-              <h3 className='text-2xl font-bold text-purple-600 mt-1'>--</h3>
-            </div>
-            <div className='p-3 bg-purple-50 rounded-xl text-purple-500'>
-              <FileText size={24} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className='grid grid-cols-1 lg:grid-cols-3 gap-6'>
-        {/* Class List with Click to show details */}
-        <div className='lg:col-span-1 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden'>
-          <div className='p-4 border-b border-slate-100'>
-            <h3 className='font-bold text-slate-800'>Danh sách lớp học</h3>
-            <p className='text-xs text-slate-400'>Chọn lớp để xem chi tiết</p>
-          </div>
-
-          <div className='max-h-[400px] overflow-y-auto'>
-            {classes.length === 0 ? (
-              <div className='p-8 text-center text-slate-500'>
-                <BookOpen size={40} className='mx-auto mb-3 text-slate-300' />
-                <p>Bạn chưa có lớp học nào</p>
-              </div>
-            ) : (
-              classes.map((cls) => (
-                <div
-                  key={cls.id}
-                  onClick={() => handleSelectClass(cls)}
-                  className={`p-4 border-b border-slate-50 cursor-pointer transition-colors ${
-                    selectedClass?.id === cls.id ? 'bg-orange-50 border-l-4 border-l-[#dd7323]' : 'hover:bg-slate-50'
-                  }`}
+        {/* Main Content - 2 Columns */}
+        <Grid templateColumns={{ base: '1fr', lg: '1fr 400px' }} gap={8} px={6}>
+          {/* Left Column - Recent Notifications */}
+          <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.100' shadow='sm'>
+            <Card.Header pb={3} pt={5} px={6}>
+              <HStack justify='space-between'>
+                <HStack gap={3}>
+                  <Box p={2} bg='#dd7323' borderRadius='lg'>
+                    <Bell size={20} color='white' />
+                  </Box>
+                  <Heading size='md' color='gray.800'>
+                    Thông báo gần đây
+                  </Heading>
+                </HStack>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  color='#dd7323'
+                  _hover={{ bg: 'orange.50' }}
+                  onClick={() => navigate('/lecturer/notifications')}
                 >
-                  <div className='flex items-center justify-between'>
-                    <div>
-                      <h4 className='font-semibold text-slate-800 text-sm'>{cls.name}</h4>
-                      <p className='text-xs text-slate-500 mt-1'>{cls.subject_name}</p>
-                      <div className='flex items-center gap-3 mt-2 text-xs text-slate-400'>
-                        <span className='flex items-center gap-1'>
-                          <Users size={12} /> {cls.student_count || 0}
-                        </span>
-                        <span className='flex items-center gap-1'>
-                          <Calendar size={12} /> {cls.semester}
-                        </span>
-                      </div>
-                    </div>
-                    <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        cls.status === 1 ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-200 text-slate-600'
-                      }`}
-                    >
-                      {cls.status === 1 ? 'Mở' : 'Đóng'}
-                    </span>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+                  Xem tất cả
+                  <ArrowRight size={16} />
+                </Button>
+              </HStack>
+            </Card.Header>
 
-          <div className='p-3 border-t border-slate-100 bg-slate-50'>
-            <button
-              onClick={() => navigate('/lecturer/classes-management/list')}
-              className='w-full text-center text-sm font-medium text-[#dd7323] hover:text-[#c2621a] flex items-center justify-center gap-1'
-            >
-              Xem tất cả <ChevronRight size={16} />
-            </button>
-          </div>
-        </div>
-
-        {/* Selected Class Details with avg_score displayed only here */}
-        <div className='lg:col-span-2 space-y-6'>
-          {selectedClass ? (
-            <>
-              {/* Class Info Card */}
-              <div className='bg-white rounded-2xl shadow-sm border border-slate-100 p-6'>
-                <div className='flex items-start justify-between mb-4'>
-                  <div>
-                    <h3 className='text-lg font-bold text-slate-800'>{selectedClass.name}</h3>
-                    <p className='text-slate-500'>{selectedClass.subject_name}</p>
-                  </div>
-                  <button
-                    onClick={() => navigate(`/lecturer/classes-management/details/${selectedClass.id}`)}
-                    className='px-3 py-1.5 bg-[#dd7323] text-white rounded-lg text-sm hover:bg-[#c2621a] transition-colors'
-                  >
-                    Chi tiết
-                  </button>
-                </div>
-
-                <div className='grid grid-cols-2 md:grid-cols-4 gap-4'>
-                  <div className='bg-blue-50 rounded-xl p-4 text-center'>
-                    <Users size={20} className='text-blue-500 mx-auto mb-1' />
-                    <p className='text-xl font-bold text-blue-600'>{selectedClass.student_count || 0}</p>
-                    <p className='text-xs text-blue-500'>Sinh viên</p>
-                  </div>
-
-                  <div className='bg-orange-50 rounded-xl p-4 text-center'>
-                    <Award size={20} className='text-[#dd7323] mx-auto mb-1' />
-                    <p className='text-xl font-bold text-[#dd7323]'>{selectedClass.avg_score?.toFixed(1) || '--'}</p>
-                    <p className='text-xs text-orange-500'>Điểm TB</p>
-                  </div>
-
-                  <div className='bg-emerald-50 rounded-xl p-4 text-center'>
-                    <Calendar size={20} className='text-emerald-500 mx-auto mb-1' />
-                    <p className='text-sm font-bold text-emerald-600'>{selectedClass.semester}</p>
-                    <p className='text-xs text-emerald-500'>{selectedClass.academic_year}</p>
-                  </div>
-
-                  <div className='bg-purple-50 rounded-xl p-4 text-center'>
-                    <Clock size={20} className='text-purple-500 mx-auto mb-1' />
-                    <p className='text-sm font-bold text-purple-600'>
-                      {selectedClass.status === 1 ? 'Đang mở' : 'Đã đóng'}
-                    </p>
-                    <p className='text-xs text-purple-500'>Trạng thái</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Top Ranking Students */}
-              <div className='bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden'>
-                <div className='p-4 border-b border-slate-100 flex items-center justify-between'>
-                  <div>
-                    <h3 className='font-bold text-slate-800'>Top sinh viên</h3>
-                    <p className='text-xs text-slate-400'>Xếp hạng điểm cao nhất trong lớp</p>
-                  </div>
-                  <button
-                    onClick={() => navigate('/lecturer/ranking-analyst')}
-                    className='text-sm text-[#dd7323] hover:underline'
-                  >
-                    Xem tất cả
-                  </button>
-                </div>
-
-                {loadingRanking ? (
-                  <div className='p-8 text-center'>
-                    <Loader2 size={24} className='text-[#dd7323] animate-spin mx-auto' />
-                  </div>
-                ) : classRanking.length === 0 ? (
-                  <div className='p-8 text-center text-slate-500'>
-                    <Award size={40} className='mx-auto mb-3 text-slate-300' />
-                    <p>Chưa có dữ liệu xếp hạng</p>
-                  </div>
+            <Card.Body pt={2}>
+              <VStack gap={3} align='stretch'>
+                {notificationsLoading ? (
+                  <Center py={8}>
+                    <Spinner size='lg' color='#dd7323' />
+                  </Center>
+                ) : notifications.length === 0 ? (
+                  <Center py={8}>
+                    <VStack gap={3}>
+                      <Circle size='16' bg='orange.50'>
+                        <Bell size={32} color='#dd7323' />
+                      </Circle>
+                      <Text color='gray.500'>Không có thông báo mới</Text>
+                    </VStack>
+                  </Center>
                 ) : (
-                  <div className='divide-y divide-slate-50'>
-                    {classRanking.slice(0, 5).map((student, index) => (
-                      <div
-                        key={student.student_id}
-                        className='p-4 flex items-center gap-4 hover:bg-slate-50 transition-colors'
-                      >
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm ${
-                            index === 0
-                              ? 'bg-yellow-100 text-yellow-600'
-                              : index === 1
-                                ? 'bg-slate-100 text-slate-600'
-                                : index === 2
-                                  ? 'bg-orange-100 text-orange-600'
-                                  : 'bg-slate-50 text-slate-500'
-                          }`}
-                        >
-                          {index + 1}
-                        </div>
-                        <img
-                          src={
-                            student.avatar ||
-                            `https://ui-avatars.com/api/?name=${student.student_name || '/placeholder.svg'}&background=random`
-                          }
-                          alt={student.student_name}
-                          className='w-10 h-10 rounded-full object-cover'
-                        />
-                        <div className='flex-1'>
-                          <h4 className='font-semibold text-slate-800 text-sm'>{student.student_name}</h4>
-                          <p className='text-xs text-slate-500'>{student.student_code}</p>
-                        </div>
-                        <div className='text-right'>
-                          <p className='font-bold text-[#dd7323]'>{student.score.toFixed(1)}</p>
-                          <p className='text-xs text-slate-400'>điểm</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  notifications.slice(0, 5).map((notification) => (
+                    <Box
+                      key={notification.id}
+                      p={4}
+                      bg={notification.is_read ? 'gray.50' : 'orange.50'}
+                      borderRadius='xl'
+                      borderLeft='4px solid'
+                      borderLeftColor='#dd7323'
+                      cursor='pointer'
+                      _hover={{ bg: notification.is_read ? 'gray.100' : 'orange.100', transform: 'translateX(4px)' }}
+                      transition='all 0.2s'
+                    >
+                      <HStack gap={3} align='flex-start'>
+                        <Circle size='10' bg='orange.100' flexShrink={0}>
+                          <Megaphone size={18} color='#dd7323' />
+                        </Circle>
+                        <VStack align='flex-start' gap={1} flex={1} minW={0}>
+                          <HStack gap={2} flexWrap='wrap'>
+                            <Text fontWeight='semibold' fontSize='sm' color='gray.800' lineClamp={1}>
+                              {notification.title}
+                            </Text>
+                            {!notification.is_read && (
+                              <Badge bg='#dd7323' color='white' size='sm' borderRadius='full'>
+                                Mới
+                              </Badge>
+                            )}
+                          </HStack>
+                          <Text fontSize='sm' color='gray.600' lineClamp={2}>
+                            {notification.content}
+                          </Text>
+                          <Text fontSize='xs' color='gray.500'>
+                            {getRelativeTime(notification.created_at)}
+                          </Text>
+                        </VStack>
+                      </HStack>
+                    </Box>
+                  ))
                 )}
-              </div>
-            </>
-          ) : (
-            <div className='bg-white rounded-2xl shadow-sm border border-slate-100 p-12 text-center'>
-              <BookOpen size={48} className='mx-auto mb-4 text-slate-300' />
-              <p className='text-slate-500'>Chọn một lớp học để xem chi tiết</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+              </VStack>
+            </Card.Body>
+          </Card.Root>
+
+          {/* Right Column - Mini Calendar */}
+          <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.100' shadow='sm' height='fit-content'>
+            <Card.Header pb={2} pt={5} px={6}>
+              <HStack justify='space-between'>
+                <HStack gap={3}>
+                  <Box p={2} bg='#dd7323' borderRadius='lg'>
+                    <Calendar size={20} color='white' />
+                  </Box>
+                  <Heading size='md' color='gray.800'>
+                    Lịch chấm bài
+                  </Heading>
+                </HStack>
+              </HStack>
+            </Card.Header>
+
+            <Card.Body pt={2} pb={4}>
+              {/* Calendar Navigation */}
+              <HStack justify='space-between' mb={3}>
+                <IconButton
+                  aria-label='Tháng trước'
+                  variant='ghost'
+                  size='sm'
+                  color='#dd7323'
+                  _hover={{ bg: 'orange.50' }}
+                  onClick={goToPrevMonth}
+                >
+                  <ChevronLeft size={18} />
+                </IconButton>
+                <Text fontWeight='semibold' color='#dd7323'>
+                  Tháng {currentDate.getMonth() + 1}/{currentDate.getFullYear()}
+                </Text>
+                <IconButton
+                  aria-label='Tháng sau'
+                  variant='ghost'
+                  size='sm'
+                  color='#dd7323'
+                  _hover={{ bg: 'orange.50' }}
+                  onClick={goToNextMonth}
+                >
+                  <ChevronRight size={18} />
+                </IconButton>
+              </HStack>
+
+              {/* Day Headers */}
+              <Grid templateColumns='repeat(7, 1fr)' gap={1} mb={2}>
+                {DAYS_SHORT.map((day) => (
+                  <Text key={day} textAlign='center' fontSize='xs' fontWeight='semibold' color='#dd7323'>
+                    {day}
+                  </Text>
+                ))}
+              </Grid>
+
+              {/* Calendar Grid */}
+              <Grid templateColumns='repeat(7, 1fr)' gap={1}>
+                {calendarDays.map((day, index) => (
+                  <GridItem
+                    key={index}
+                    p={1}
+                    textAlign='center'
+                    borderRadius='md'
+                    bg={day.isToday ? '#dd7323' : 'transparent'}
+                    color={day.isToday ? 'white' : day.isCurrentMonth ? 'gray.800' : 'gray.400'}
+                    position='relative'
+                    minH='32px'
+                    display='flex'
+                    alignItems='center'
+                    justifyContent='center'
+                  >
+                    <Text fontSize='sm' fontWeight={day.isToday ? 'bold' : 'normal'}>
+                      {day.date.getDate()}
+                    </Text>
+                    {day.hasDeadline && !day.isToday && (
+                      <Circle
+                        size='2'
+                        bg='red.500'
+                        position='absolute'
+                        bottom='2px'
+                        left='50%'
+                        transform='translateX(-50%)'
+                      />
+                    )}
+                  </GridItem>
+                ))}
+              </Grid>
+
+              {/* Legend */}
+              <HStack gap={4} mt={4} justify='center'>
+                <HStack gap={1}>
+                  <Circle size='2' bg='red.500' />
+                  <Text fontSize='xs' color='gray.600'>
+                    Deadline chấm bài
+                  </Text>
+                </HStack>
+              </HStack>
+            </Card.Body>
+          </Card.Root>
+        </Grid>
+      </Box>
+    </Box>
   )
 }

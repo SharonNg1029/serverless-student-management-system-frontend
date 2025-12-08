@@ -1,251 +1,340 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Search, Loader2, Plus, BookOpen } from 'lucide-react'
+import { useEffect, useState, useCallback } from 'react'
+import { Search, ChevronRight, BookOpen, Library } from 'lucide-react'
+import { Box, Text, VStack, Spinner, Collapsible, SimpleGrid, HStack, Icon } from '@chakra-ui/react'
+import { ErrorDisplay } from '../../components/ui/ErrorDisplay'
+import SubjectClassCard, { type ClassInfo } from '../../components/ui/SubjectClassCard'
+import EnrolmentModal from '../../components/ui/EnrolmentModal'
+import PageHeader from '../../components/ui/PageHeader'
+import EmptyState from '../../components/ui/EmptyState'
+import { toaster } from '../../components/ui/toaster'
+import api from '../../utils/axios'
 
-interface Course {
+// API Response types
+interface SubjectFromAPI {
   id: string
   name: string
-  code: string
-  subjectName: string
-  lecturerName: string
-  schedule: string
-  capacity: number
-  enrolled: number
-  isEnrolled: boolean
-  prerequisites?: string
-  semester: string
+  description?: string
+  credits?: number
 }
 
-const MOCK_COURSES: Course[] = [
-  {
-    id: '10',
-    name: 'Lập trình React',
-    code: 'C003',
-    subjectName: 'Lập trình Frontend',
-    lecturerName: 'Nguyễn Văn F',
-    schedule: 'T3, T5 14:00 - 15:30',
-    enrolled: 28,
-    capacity: 40,
-    isEnrolled: false,
-    prerequisites: 'Lập trình Web 101',
-    semester: '1'
-  },
-  {
-    id: '11',
-    name: 'API & RESTful Services',
-    code: 'C004',
-    subjectName: 'Lập trình Backend',
-    lecturerName: 'Trần Thị G',
-    schedule: 'T2, T4 15:00 - 16:30',
-    enrolled: 32,
-    capacity: 40,
-    isEnrolled: false,
-    prerequisites: 'Lập trình OOP',
-    semester: '1'
-  },
-  {
-    id: '12',
-    name: 'Bảo mật thông tin',
-    code: 'S001',
-    subjectName: 'An ninh mạng',
-    lecturerName: 'Phạm Văn H',
-    schedule: 'T6 09:00 - 11:30',
-    enrolled: 25,
-    capacity: 30,
-    isEnrolled: false,
-    prerequisites: 'Mạng máy tính',
-    semester: '1'
-  },
-  {
-    id: '13',
-    name: 'Hệ điều hành',
-    code: 'S002',
-    subjectName: 'Hệ thống',
-    lecturerName: 'Lê Văn I',
-    schedule: 'T3 09:00 - 10:30',
-    enrolled: 30,
-    capacity: 40,
-    isEnrolled: false,
-    prerequisites: 'Kiến trúc máy tính',
-    semester: '1'
-  },
-  {
-    id: '14',
-    name: 'Machine Learning Basics',
-    code: 'AI001',
-    subjectName: 'Trí tuệ nhân tạo',
-    lecturerName: 'Hoàng Thị J',
-    schedule: 'T2 13:00 - 14:30',
-    enrolled: 35,
-    capacity: 40,
-    isEnrolled: false,
-    prerequisites: 'Xử lý dữ liệu',
-    semester: '1'
-  }
-]
+interface ClassFromAPI {
+  id: number
+  name: string
+  subject_id: number
+  subject_name?: string
+  teacher_id: number
+  teacher_name?: string
+  semester: string
+  academic_year: string
+  student_count: number
+  status: number
+}
+
+interface SubjectsAPIResponse {
+  data: SubjectFromAPI[]
+  count: number
+  message: string
+}
+
+interface ClassesAPIResponse {
+  data: ClassFromAPI[]
+  count: number
+  message: string
+}
+
+interface Subject {
+  id: string
+  name: string
+  description: string
+  credits: number
+}
+
+interface SubjectWithClasses extends Subject {
+  classes: ClassInfo[]
+  isLoading: boolean
+  isLoaded: boolean
+}
 
 export default function AllCoursesRoute() {
-  const [courses, setCourses] = useState<Course[]>(MOCK_COURSES)
+  const [subjects, setSubjects] = useState<SubjectWithClasses[]>([])
   const [searchTerm, setSearchTerm] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [expandedSubjects, setExpandedSubjects] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    fetchAllCourses()
-  }, [])
+  // Modal state
+  const [selectedClass, setSelectedClass] = useState<ClassInfo | null>(null)
+  const [selectedCardIndex, setSelectedCardIndex] = useState(0)
+  const [isModalOpen, setIsModalOpen] = useState(false)
 
-  const fetchAllCourses = async () => {
+  const fetchSubjects = useCallback(async () => {
     setLoading(true)
+    setError(null)
+
     try {
-      // TODO: Replace with API call:
-      // const data = await fetch('/api/student/search?type=classes').then(r => r.json())
-      // setCourses(data.results)
-      await new Promise((resolve) => setTimeout(resolve, 300))
-    } catch (error) {
-      console.error('Failed to fetch courses:', error)
+      const response = await api.get<SubjectsAPIResponse>('/api/v1/subjects')
+
+      const mappedSubjects: SubjectWithClasses[] = (response.data.data || []).map((s) => ({
+        id: s.id,
+        name: s.name,
+        description: s.description || 'Chưa có mô tả',
+        credits: s.credits || 0,
+        classes: [],
+        isLoading: false,
+        isLoaded: false
+      }))
+
+      setSubjects(mappedSubjects)
+    } catch (err) {
+      setError('Không thể tải danh sách môn học. Vui lòng thử lại.')
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  const fetchClassesForSubject = useCallback(async (subjectId: string) => {
+    // Update loading state
+    setSubjects((prev) =>
+      prev.map((s) => (s.id === subjectId ? { ...s, isLoading: true } : s))
+    )
+
+    try {
+      const response = await api.get<ClassesAPIResponse>(`/api/v1/subjects/${subjectId}/classes`)
+
+      const classes: ClassInfo[] = (response.data.data || []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        subject_id: c.subject_id,
+        subject_name: c.subject_name || '',
+        teacher_id: c.teacher_id,
+        teacher_name: c.teacher_name || 'Chưa có giảng viên',
+        semester: c.semester,
+        academic_year: c.academic_year,
+        student_count: c.student_count,
+        status: c.status
+      }))
+
+      setSubjects((prev) =>
+        prev.map((s) =>
+          s.id === subjectId ? { ...s, classes, isLoading: false, isLoaded: true } : s
+        )
+      )
+    } catch (err) {
+      console.error('Failed to fetch classes:', err)
+      setSubjects((prev) =>
+        prev.map((s) => (s.id === subjectId ? { ...s, isLoading: false, isLoaded: true } : s))
+      )
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchSubjects()
+  }, [fetchSubjects])
+
+  const handleToggleSubject = (subjectId: string) => {
+    const subject = subjects.find((s) => s.id === subjectId)
+
+    setExpandedSubjects((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(subjectId)) {
+        newSet.delete(subjectId)
+      } else {
+        newSet.add(subjectId)
+        // Fetch classes if not loaded yet
+        if (subject && !subject.isLoaded && !subject.isLoading) {
+          fetchClassesForSubject(subjectId)
+        }
+      }
+      return newSet
+    })
   }
 
-  const handleEnroll = async (courseId: string) => {
+  const handleClassClick = (classInfo: ClassInfo, index: number) => {
+    setSelectedClass(classInfo)
+    setSelectedCardIndex(index)
+    setIsModalOpen(true)
+  }
+
+  const handleEnrol = async (classId: number, enrolmentKey: string) => {
     try {
-      // TODO: Call enroll API:
-      // await fetch('/api/student/enroll', {
-      //   method: 'POST',
-      //   body: JSON.stringify({ class_id: courseId, action: 'enroll' })
-      // })
-      setCourses(courses.map((c) => (c.id === courseId ? { ...c, isEnrolled: true, enrolled: c.enrolled + 1 } : c)))
-    } catch (error) {
-      console.error('Failed to enroll:', error)
+      await api.post(`/api/v1/classes/${classId}/enrol`, {
+        enrolment_key: enrolmentKey
+      })
+
+      toaster.create({
+        title: 'Đăng ký thành công',
+        description: 'Bạn đã đăng ký lớp học thành công!',
+        type: 'success',
+        duration: 3000
+      })
+
+      setIsModalOpen(false)
+    } catch (err: any) {
+      const message = err.response?.data?.message || 'Đăng ký thất bại. Vui lòng kiểm tra lại mã đăng ký.'
+      toaster.create({
+        title: 'Đăng ký thất bại',
+        description: message,
+        type: 'error',
+        duration: 3000
+      })
+      throw err
     }
   }
 
-  const filteredCourses = courses.filter(
-    (course) =>
-      course.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      course.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      course.subjectName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      course.lecturerName.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredSubjects = subjects.filter(
+    (subject) =>
+      subject.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      subject.id.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   if (loading) {
     return (
-      <div className='min-h-[60vh] flex items-center justify-center bg-slate-50'>
-        <div className='text-center'>
-          <Loader2 size={40} className='text-[#dd7323] animate-spin mx-auto mb-3' />
-          <p className='text-slate-600'>Đang tải khóa học...</p>
-        </div>
-      </div>
+      <Box minH='60vh' display='flex' alignItems='center' justifyContent='center' bg='gray.50'>
+        <VStack gap={3}>
+          <Spinner size='xl' color='orange.500' borderWidth='4px' />
+          <Text color='gray.600'>Đang tải môn học...</Text>
+        </VStack>
+      </Box>
     )
   }
 
+  if (error) {
+    return <ErrorDisplay variant='fetch' message={error} onRetry={fetchSubjects} />
+  }
+
   return (
-    <div className='w-full py-8 px-4 sm:px-6 lg:px-8 bg-slate-50'>
-      <div className='max-w-6xl mx-auto'>
+    <Box w='full' py={8} px={{ base: 4, sm: 6, lg: 8 }} bg='white' minH='100vh'>
+      <Box maxW='6xl' mx='auto'>
         {/* Header */}
-        <div className='mb-8'>
-          <h1 className='text-3xl font-bold text-slate-900'>Tất cả khóa học</h1>
-          <p className='text-slate-600 mt-1'>Tìm kiếm và đăng ký khóa học mới</p>
-        </div>
+        <PageHeader icon={Library} title='Tất cả môn học' subtitle='Khám phá các môn học có sẵn trong hệ thống' />
 
         {/* Search Bar */}
-        <div className='mb-6'>
-          <div className='relative'>
-            <Search className='absolute left-4 top-1/2 -translate-y-1/2 text-slate-400' size={20} />
+        <Box mb={6} px={6}>
+          <Box position='relative'>
+            <Box
+              position='absolute'
+              left={4}
+              top='50%'
+              transform='translateY(-50%)'
+              zIndex={1}
+              color='gray.400'
+            >
+              <Search size={20} />
+            </Box>
             <input
               type='text'
-              placeholder='Tìm kiếm theo tên khóa học, mã lớp, chủ đề hoặc giảng viên...'
+              placeholder='Tìm kiếm theo tên hoặc mã môn học...'
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className='w-full pl-12 pr-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none bg-white'
+              style={{
+                width: '100%',
+                paddingLeft: '48px',
+                paddingRight: '16px',
+                paddingTop: '12px',
+                paddingBottom: '12px',
+                border: '1px solid #fed7aa',
+                borderRadius: '12px',
+                outline: 'none',
+                backgroundColor: '#fite',
+                fontSize: '14px'
+              }}
             />
-          </div>
-        </div>
+          </Box>
+        </Box>
 
-        {/* Courses Grid */}
-        {filteredCourses.length === 0 ? (
-          <div className='bg-white rounded-xl border border-slate-200 p-12 text-center'>
-            <BookOpen size={48} className='mx-auto text-slate-300 mb-4' />
-            <p className='text-slate-500'>Không tìm thấy khóa học nào</p>
-          </div>
+        {/* Subjects List */}
+        {filteredSubjects.length === 0 ? (
+          <Box px={6}>
+            <EmptyState icon={BookOpen} title='Không tìm thấy môn học nào' />
+          </Box>
         ) : (
-          <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'>
-            {filteredCourses.map((course) => {
-              const isFull = course.enrolled >= course.capacity
+          <VStack align='stretch' gap={2}>
+            {filteredSubjects.map((subject) => {
+              const isExpanded = expandedSubjects.has(subject.id)
 
               return (
-                <div
-                  key={course.id}
-                  className='bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-lg transition-all hover:-translate-y-1'
+                <Collapsible.Root
+                  key={subject.id}
+                  open={isExpanded}
+                  onOpenChange={() => handleToggleSubject(subject.id)}
                 >
-                  {/* Header */}
-                  <div className='bg-gradient-to-r from-slate-800 to-slate-600 p-4 text-white'>
-                    <p className='text-sm opacity-90'>{course.subjectName}</p>
-                    <h3 className='text-lg font-bold mt-1'>{course.name}</h3>
-                    <p className='text-xs opacity-75 mt-1'>{course.code}</p>
-                  </div>
-
-                  {/* Content */}
-                  <div className='p-4 space-y-3'>
-                    <div className='text-sm'>
-                      <p className='text-slate-600'>
-                        <span className='font-semibold'>Giảng viên:</span> {course.lecturerName}
-                      </p>
-                    </div>
-
-                    <div className='text-sm'>
-                      <p className='text-slate-600 mb-1'>
-                        <span className='font-semibold'>Lịch:</span> {course.schedule}
-                      </p>
-                    </div>
-
-                    <div className='text-sm'>
-                      <p className='text-slate-600 mb-1'>
-                        <span className='font-semibold'>Sĩ số:</span> {course.enrolled}/{course.capacity}
-                      </p>
-                      <div className='w-full bg-slate-200 rounded-full h-2 overflow-hidden'>
-                        <div
-                          className={`h-full ${isFull ? 'bg-red-500' : 'bg-green-500'}`}
-                          style={{ width: `${(course.enrolled / course.capacity) * 100}%` }}
-                        ></div>
-                      </div>
-                    </div>
-
-                    {course.prerequisites && (
-                      <div className='text-xs bg-slate-100 text-slate-600 p-2 rounded'>
-                        <span className='font-semibold'>Yêu cầu:</span> {course.prerequisites}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Footer */}
-                  <div className='border-t border-slate-100 p-4'>
-                    {course.isEnrolled ? (
-                      <button disabled className='w-full px-4 py-2 bg-green-100 text-green-700 rounded-lg font-medium'>
-                        ✓ Đã đăng ký
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleEnroll(course.id)}
-                        disabled={isFull}
-                        className={`w-full px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 ${
-                          isFull
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-                            : 'bg-[#dd7323] text-white hover:bg-[#c2621a]'
-                        }`}
+                  {/* Subject Header */}
+                  <Collapsible.Trigger asChild>
+                    <HStack
+                      as='button'
+                      w='full'
+                      py={3}
+                      px={2}
+                      gap={2}
+                      cursor='pointer'
+                      _hover={{ bg: 'gray.100' }}
+                      borderRadius='lg'
+                      transition='all 0.2s'
+                    >
+                      <Icon
+                        asChild
+                        color='#dd7323'
+                        transform={isExpanded ? 'rotate(90deg)' : 'rotate(0deg)'}
+                        transition='transform 0.2s'
                       >
-                        <Plus size={16} />
-                        {isFull ? 'Đã đầy' : 'Đăng ký'}
-                      </button>
-                    )}
-                  </div>
-                </div>
+                        <ChevronRight size={20} />
+                      </Icon>
+                      <Text
+                        fontSize='lg'
+                        fontWeight='semibold'
+                        color='#dd7323'
+                        textAlign='left'
+                      >
+                        {subject.id}-{subject.name}
+                      </Text>
+                    </HStack>
+                  </Collapsible.Trigger>
+
+                  {/* Classes Grid */}
+                  <Collapsible.Content>
+                    <Box pl={8} pr={2} pb={4}>
+                      {subject.isLoading ? (
+                        <HStack gap={2} py={4}>
+                          <Spinner size='sm' color='orange.500' />
+                          <Text fontSize='sm' color='gray.500'>
+                            Đang tải danh sách lớp...
+                          </Text>
+                        </HStack>
+                      ) : subject.classes.length === 0 ? (
+                        <Text fontSize='sm' color='gray.500' py={4}>
+                          Chưa có lớp học nào cho môn này
+                        </Text>
+                      ) : (
+                        <SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} gap={4} pt={2}>
+                          {subject.classes.map((classInfo, index) => (
+                            <SubjectClassCard
+                              key={classInfo.id}
+                              classInfo={classInfo}
+                              index={index}
+                              onClick={() => handleClassClick(classInfo, index)}
+                            />
+                          ))}
+                        </SimpleGrid>
+                      )}
+                    </Box>
+                  </Collapsible.Content>
+                </Collapsible.Root>
               )
             })}
-          </div>
+          </VStack>
         )}
-      </div>
-    </div>
+      </Box>
+
+      {/* Enrolment Modal */}
+      <EnrolmentModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        classInfo={selectedClass}
+        cardIndex={selectedCardIndex}
+        onEnrol={handleEnrol}
+      />
+    </Box>
   )
 }

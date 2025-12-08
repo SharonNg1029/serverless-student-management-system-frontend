@@ -4,11 +4,25 @@ import { useNavigate } from 'react-router'
 import { useAuthStore } from '../../store/authStore'
 import { toaster } from '../../components/ui/toaster'
 import GoogleSignInButton from '../../components/common/GoogleSignInButton'
+import api from '../../utils/axios'
 import '../../style/login.css'
+
+// Response type từ API /users/profile
+interface UserProfileResponse {
+  data: {
+    id: string
+    name: string
+    email: string
+    dateOfBirth: string | null
+    role: string | null
+    codeUser: string
+    avatar: string
+  }
+}
 
 export default function LoginRoute() {
   const navigate = useNavigate()
-  const { loginWithCognito, loginWithGoogle, confirmNewPassword, setLoading, isLoading } = useAuthStore()
+  const { loginWithCognito, loginWithGoogle, confirmNewPassword, setLoading, isLoading, updateUser } = useAuthStore()
   const [showPassword, setShowPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -27,6 +41,43 @@ export default function LoginRoute() {
         return '/home';
       default:
         return '/home';
+    }
+  };
+
+  // Fetch user profile từ API và cập nhật store
+  const fetchUserProfile = async (): Promise<string | null> => {
+    try {
+      // Lấy accessToken từ store (vừa được set sau login)
+      const { accessToken } = useAuthStore.getState();
+      
+      if (!accessToken) {
+        console.warn('No access token available for fetching user profile');
+        return null;
+      }
+      
+      const response = await api.get<UserProfileResponse>('/api/users/profile', {
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+      
+      const profileData = response.data.data;
+      
+      // Cập nhật user info vào store
+      updateUser({
+        id: profileData.id,
+        fullName: profileData.name,
+        email: profileData.email,
+        avatar: profileData.avatar,
+        role: (profileData.role as 'Student' | 'Lecturer' | 'Admin') || 'Student',
+        // Lưu thêm các thông tin khác nếu cần
+      });
+      
+      // Trả về role để redirect
+      return profileData.role;
+    } catch (error) {
+      console.error('Failed to fetch user profile:', error);
+      return null;
     }
   };
 
@@ -50,7 +101,11 @@ export default function LoginRoute() {
         return;
       }
       // Đợi 100ms để Zustand persist lưu vào localStorage
-      await new Promise(resolve => setTimeout(resolve, 100));    
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Gọi API lấy thông tin user profile
+      const profileRole = await fetchUserProfile();
+      
       toaster.create({
         title: 'Đăng nhập thành công',
         type: 'success',
@@ -59,7 +114,9 @@ export default function LoginRoute() {
       });
       // Lấy thông tin user từ store để xác định role
       const { user } = useAuthStore.getState();
-      const redirectPath = user?.role ? getRedirectPathByRole(user.role) : '/home';
+      // Ưu tiên role từ API profile, nếu không có thì dùng từ Cognito
+      const finalRole = profileRole || user?.role || 'Student';
+      const redirectPath = getRedirectPathByRole(finalRole);
       // Redirect dựa trên role
       navigate(redirectPath, { replace: true });
     } catch (error: any) {
@@ -110,9 +167,16 @@ export default function LoginRoute() {
       await confirmNewPassword(newPasswordData.newPassword);
       // Đợi 100ms để Zustand persist lưu vào localStorage
       await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Gọi API lấy thông tin user profile
+      const profileRole = await fetchUserProfile();
+      
       // Lấy thông tin user từ store để xác định role
       const { user } = useAuthStore.getState();
-      const redirectPath = user?.role ? getRedirectPathByRole(user.role) : '/home';
+      // Ưu tiên role từ API profile, nếu không có thì dùng từ Cognito
+      const finalRole = profileRole || user?.role || 'Student';
+      const redirectPath = getRedirectPathByRole(finalRole);
+      
       toaster.create({
         title: 'Đổi mật khẩu thành công',
         description: 'Mật khẩu của bạn đã được cập nhật!',
@@ -153,6 +217,9 @@ export default function LoginRoute() {
       // Gọi loginWithGoogle từ authStore
       await loginWithGoogle(credential);
       
+      // Gọi API lấy thông tin user profile
+      const profileRole = await fetchUserProfile();
+      
       // Lấy thông tin user từ store sau khi login
       const { user } = useAuthStore.getState();
       
@@ -163,8 +230,9 @@ export default function LoginRoute() {
         duration: 3000,
       });
 
-      // Redirect dựa trên role
-      const redirectPath = user?.role ? getRedirectPathByRole(user.role) : '/home';
+      // Ưu tiên role từ API profile, nếu không có thì dùng từ Cognito
+      const finalRole = profileRole || user?.role || 'Student';
+      const redirectPath = getRedirectPathByRole(finalRole);
       
       // Đợi một chút để toast hiển thị
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -278,12 +346,15 @@ export default function LoginRoute() {
                 <span>Hoặc</span>
               </div>
 
+              {/* Google Sign-In tạm ẩn - cần cấu hình origin trong Google Cloud Console */}
+              {/* 
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>
                 <GoogleSignInButton 
                   onSuccess={handleGoogleSuccess}
                   onError={handleGoogleError}
                 />
               </div>
+              */}
             </form>
           ) : (
             <form onSubmit={handleNewPasswordSubmit} className="login-form">

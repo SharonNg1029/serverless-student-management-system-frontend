@@ -1,17 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import {
-  Box,
-  Text,
-  VStack,
-  HStack,
-  Spinner,
-  Card,
-  Avatar,
-  Badge,
-  Button
-} from '@chakra-ui/react'
+import { Box, Text, VStack, HStack, Spinner, Card, Avatar, Badge, Button } from '@chakra-ui/react'
 import { MessageSquare, Heart, Pin, ChevronDown, ChevronUp, Plus, Download, File } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import StatsCard from '../ui/StatsCard'
@@ -20,54 +10,8 @@ import CreatePostModal, { type PostFormData } from './CreatePostModal'
 import { lecturerPostApi } from '../../services/lecturerApi'
 import type { PostDTO } from '../../types'
 
-const USE_MOCK_DATA = true
-
-const MOCK_POSTS: PostDTO[] = [
-  {
-    id: 1,
-    class_id: 1,
-    lecturer_id: 1,
-    lecturer_name: 'Nguyễn Văn An',
-    title: '📢 Thông báo lịch thi giữa kỳ',
-    content: `## Lịch thi giữa kỳ\n\n- **Ngày thi**: 15/11/2024\n- **Thời gian**: 08:00 - 10:00\n- **Phòng thi**: A101, A102\n\n### Nội dung ôn tập:\n1. Chương 1-3\n2. Bài tập Lab 1-3`,
-    is_pinned: true,
-    like_count: 24,
-    comment_count: 8,
-    created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    updated_at: ''
-  },
-  {
-    id: 2,
-    class_id: 1,
-    lecturer_id: 1,
-    lecturer_name: 'Nguyễn Văn An',
-    title: 'Tài liệu bổ sung tuần 5',
-    content: `Các bạn có thể tham khảo thêm tài liệu về **vòng lặp** và **hàm** tại slide đã upload.`,
-    attachment_url: 'https://example.com/file.pdf',
-    attachment_name: 'Slide_Tuan5.pdf',
-    is_pinned: false,
-    like_count: 12,
-    comment_count: 3,
-    created_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
-    updated_at: ''
-  },
-  {
-    id: 3,
-    class_id: 1,
-    lecturer_id: 1,
-    lecturer_name: 'Nguyễn Văn An',
-    title: 'Hướng dẫn nộp bài Project Phase 1',
-    content: `### Yêu cầu nộp bài:\n\n1. File báo cáo PDF\n2. Source code nén .zip\n3. Đặt tên: \`MSSV_HoTen_Phase1.zip\`\n\n**Deadline**: 25/10/2024 23:59`,
-    is_pinned: true,
-    like_count: 18,
-    comment_count: 5,
-    created_at: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    updated_at: ''
-  }
-]
-
 interface PostTabProps {
-  classId: number
+  classId: string
 }
 
 function getRelativeTime(dateStr: string): string {
@@ -83,7 +27,9 @@ function getRelativeTime(dateStr: string): string {
   if (diffHours < 24) return `${diffHours} giờ trước`
   if (diffDays === 1) return 'Hôm qua'
   if (diffDays < 7) return `${diffDays} ngày trước`
-  return date.toLocaleDateString('vi-VN') + ' · ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  return (
+    date.toLocaleDateString('vi-VN') + ' · ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  )
 }
 
 export default function LecturerPostTab({ classId }: PostTabProps) {
@@ -93,15 +39,12 @@ export default function LecturerPostTab({ classId }: PostTabProps) {
 
   const fetchPosts = useCallback(async () => {
     setLoading(true)
-    if (USE_MOCK_DATA) {
-      await new Promise((r) => setTimeout(r, 400))
-      setPosts(MOCK_POSTS)
-      setLoading(false)
-      return
-    }
     try {
       const response = await lecturerPostApi.getPosts(classId)
-      setPosts(response.results || [])
+      console.log('Posts response:', response)
+      // BE trả về { data: [...], count, message, status }
+      const data = (response as any)?.data || response?.results || []
+      setPosts(data)
     } catch (err) {
       console.error('Failed to fetch posts:', err)
     } finally {
@@ -130,27 +73,6 @@ export default function LecturerPostTab({ classId }: PostTabProps) {
   }, [posts])
 
   const handleCreatePost = async (data: PostFormData) => {
-    if (USE_MOCK_DATA) {
-      // Mock create
-      const newPost: PostDTO = {
-        id: Date.now(),
-        class_id: classId,
-        lecturer_id: 1,
-        lecturer_name: 'Nguyễn Văn An',
-        title: data.title,
-        content: data.content,
-        is_pinned: data.is_pinned,
-        attachment_url: data.attachment ? URL.createObjectURL(data.attachment) : undefined,
-        attachment_name: data.attachment?.name,
-        like_count: 0,
-        comment_count: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-      setPosts((prev) => [newPost, ...prev])
-      return
-    }
-
     await lecturerPostApi.createPost(classId, {
       title: data.title,
       content: data.content,
@@ -181,10 +103,10 @@ export default function LecturerPostTab({ classId }: PostTabProps) {
             <StatsCard label='Đã ghim' value={stats.pinned} icon={Pin} />
           </Box>
         </HStack>
-        <Button 
-          bg='#dd7323' 
-          color='white' 
-          borderRadius='xl' 
+        <Button
+          bg='#dd7323'
+          color='white'
+          borderRadius='xl'
           _hover={{ bg: '#c5651f' }}
           onClick={() => setIsCreateModalOpen(true)}
         >
@@ -195,7 +117,11 @@ export default function LecturerPostTab({ classId }: PostTabProps) {
 
       {/* Posts Feed */}
       {sortedPosts.length === 0 ? (
-        <EmptyState icon={MessageSquare} title='Chưa có bài đăng nào' description='Tạo bài đăng mới để thông báo cho sinh viên' />
+        <EmptyState
+          icon={MessageSquare}
+          title='Chưa có bài đăng nào'
+          description='Tạo bài đăng mới để thông báo cho sinh viên'
+        />
       ) : (
         <VStack gap={4} align='stretch'>
           {sortedPosts.map((post) => (

@@ -10,11 +10,39 @@ import {
 } from '@aws-amplify/auth'
 import type { User } from '../types'
 
-// Helper function để lấy role từ DynamoDB nếu không có trong Cognito
-const fetchUserRoleFromDynamoDB = async (userId: string, accessToken: string): Promise<string | null> => {
+// Profile data from API
+interface ProfileData {
+  id?: string
+  name?: string
+  email?: string
+  role?: string
+  codeUser?: string
+  avatar?: string
+  phone?: string
+  dateOfBirth?: string
+}
+
+// Helper function để normalize role (API có thể trả về lowercase)
+const normalizeRole = (role?: string | null): 'Student' | 'Lecturer' | 'Admin' | null => {
+  if (!role) return null
+  const lowerRole = role.toLowerCase()
+  switch (lowerRole) {
+    case 'admin':
+      return 'Admin'
+    case 'lecturer':
+      return 'Lecturer'
+    case 'student':
+      return 'Student'
+    default:
+      return null
+  }
+}
+
+// Helper function để lấy profile từ API
+const fetchUserProfile = async (accessToken: string): Promise<ProfileData | null> => {
   try {
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL
-    const response = await fetch(`${apiBaseUrl}/profile`, {
+    const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const response = await fetch(`${apiBaseUrl}/api/users/profile`, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -23,21 +51,14 @@ const fetchUserRoleFromDynamoDB = async (userId: string, accessToken: string): P
     })
 
     if (!response.ok) {
-      console.error('Failed to fetch user profile from DynamoDB')
+      console.error('Failed to fetch user profile from API')
       return null
     }
 
-    const data = await response.json()
-    // Map role_id to role name
-    const roleMap: Record<number, string> = {
-      1: 'Admin',
-      2: 'Lecturer',
-      3: 'Student'
-    }
-
-    return roleMap[data.role_id] || null
+    const result = await response.json()
+    return result.data || result
   } catch (error) {
-    console.error('Error fetching role from DynamoDB:', error)
+    console.error('Error fetching profile from API:', error)
     return null
   }
 }
@@ -139,29 +160,28 @@ export const useAuthStore = create<AuthState>()(
             const attrRole = userAttributes['custom:role'] || userAttributes['custom:Role'] || userAttributes.role
             let finalRole = idTokenRole || attrRole
 
-            // If no role found in Cognito, try to fetch from DynamoDB
-            if (!finalRole) {
-              try {
-                const dynamoRole = await fetchUserRoleFromDynamoDB(currentUser.userId, tokens.accessToken.toString())
-                if (dynamoRole) {
-                  finalRole = dynamoRole
-                }
-              } catch (error) {
-                // Silently fail, will use default role
-              }
+            // Fetch profile from API to get accurate role and user info
+            let profileData: ProfileData | null = null
+            try {
+              profileData = await fetchUserProfile(tokens.accessToken.toString())
+              console.log('Profile data from API:', profileData)
+            } catch (error) {
+              console.error('Error fetching profile:', error)
             }
 
-            const roleValue = (finalRole as 'Student' | 'Lecturer' | 'Admin') || 'Student'
+            // Use role from profile API if available, otherwise fallback to Cognito
+            // Normalize role since API may return lowercase (e.g., "lecturer" instead of "Lecturer")
+            const roleValue = normalizeRole(profileData?.role) || normalizeRole(finalRole as string) || 'Student'
 
             const userData: User = {
-              id: currentUser.userId,
-              username: currentUser.username,
-              email: userAttributes.email || email,
-              fullName: userAttributes.name || userAttributes.email || '',
+              id: profileData?.id || currentUser.userId,
+              username: profileData?.codeUser || currentUser.username,
+              email: profileData?.email || userAttributes.email || email,
+              fullName: profileData?.name || userAttributes.name || userAttributes.email || '',
               role: roleValue,
               token: tokens.accessToken.toString(), // For backward compatibility
-              avatar: userAttributes.picture || '',
-              phone: userAttributes.phone_number || '',
+              avatar: profileData?.avatar || userAttributes.picture || '',
+              phone: profileData?.phone || userAttributes.phone_number || '',
               isEmailVerified: userAttributes.email_verified === 'true',
               lastLogin: new Date().toISOString(),
               loginMethod: 'cognito',
@@ -232,19 +252,29 @@ export const useAuthStore = create<AuthState>()(
             const attrRole = userAttributes['custom:role'] || userAttributes['custom:Role'] || userAttributes.role
             const finalRole = idTokenRole || attrRole
 
-            const roleValue = (finalRole as 'Student' | 'Lecturer' | 'Admin') || 'Student'
+            // Fetch profile from API to get accurate role and user info
+            let profileData: ProfileData | null = null
+            try {
+              profileData = await fetchUserProfile(tokens.accessToken.toString())
+              console.log('Profile data from API (confirm password):', profileData)
+            } catch (error) {
+              console.error('Error fetching profile:', error)
+            }
+
+            // Normalize role since API may return lowercase
+            const roleValue = normalizeRole(profileData?.role) || normalizeRole(finalRole as string) || 'Student'
             console.log('Final Role:', roleValue)
             console.log('=== END DEBUG ===')
 
             const userData: User = {
-              id: currentUser.userId,
-              username: currentUser.username,
-              email: userAttributes.email || '',
-              fullName: userAttributes.name || userAttributes.email || '',
+              id: profileData?.id || currentUser.userId,
+              username: profileData?.codeUser || currentUser.username,
+              email: profileData?.email || userAttributes.email || '',
+              fullName: profileData?.name || userAttributes.name || userAttributes.email || '',
               role: roleValue,
               token: tokens.accessToken.toString(),
-              avatar: userAttributes.picture || '',
-              phone: userAttributes.phone_number || '',
+              avatar: profileData?.avatar || userAttributes.picture || '',
+              phone: profileData?.phone || userAttributes.phone_number || '',
               isEmailVerified: userAttributes.email_verified === 'true',
               lastLogin: new Date().toISOString(),
               loginMethod: 'cognito',
@@ -427,19 +457,29 @@ export const useAuthStore = create<AuthState>()(
             const attrRole = userAttributes['custom:role'] || userAttributes['custom:Role'] || userAttributes.role
             const finalRole = idTokenRole || attrRole
 
-            const roleValue = (finalRole as 'Student' | 'Lecturer' | 'Admin') || 'Student'
+            // Fetch profile from API to get accurate role and user info
+            let profileData: ProfileData | null = null
+            try {
+              profileData = await fetchUserProfile(tokens.accessToken.toString())
+              console.log('Profile data from API (check auth):', profileData)
+            } catch (error) {
+              console.error('Error fetching profile:', error)
+            }
+
+            // Normalize role since API may return lowercase
+            const roleValue = normalizeRole(profileData?.role) || normalizeRole(finalRole as string) || 'Student'
             console.log('Final Role:', roleValue)
             console.log('=== END DEBUG ===')
 
             const userData: User = {
-              id: currentUser.userId,
-              username: currentUser.username,
-              email: userAttributes.email || '',
-              fullName: userAttributes.name || userAttributes.email || '',
+              id: profileData?.id || currentUser.userId,
+              username: profileData?.codeUser || currentUser.username,
+              email: profileData?.email || userAttributes.email || '',
+              fullName: profileData?.name || userAttributes.name || userAttributes.email || '',
               role: roleValue,
               token: tokens.accessToken.toString(),
-              avatar: userAttributes.picture || '',
-              phone: userAttributes.phone_number || '',
+              avatar: profileData?.avatar || userAttributes.picture || '',
+              phone: profileData?.phone || userAttributes.phone_number || '',
               isEmailVerified: userAttributes.email_verified === 'true',
               lastLogin: new Date().toISOString(),
               loginMethod: 'cognito',

@@ -2,17 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router'
-import {
-  Box,
-  Tabs,
-  VStack,
-  HStack,
-  Text,
-  Spinner,
-  Card,
-  Circle,
-  Badge
-} from '@chakra-ui/react'
+import { Box, Tabs, VStack, HStack, Text, Spinner, Card, Circle, Badge } from '@chakra-ui/react'
 import { FileText, MessageSquare, ChevronLeft } from 'lucide-react'
 import PageHeader from '../../components/ui/PageHeader'
 import { AssignmentTab, PostTab } from '../../components/course'
@@ -20,9 +10,9 @@ import { ErrorDisplay } from '../../components/ui/ErrorDisplay'
 import api from '../../utils/axios'
 
 // ============================================
-// MOCK DATA - Set to true to use mock data
+// MOCK DATA - Set to false to use real API
 // ============================================
-const USE_MOCK_DATA = true
+const USE_MOCK_DATA = false
 
 const MOCK_CLASS_INFO: Record<string, ClassInfo> = {
   'CS101-01': {
@@ -106,11 +96,43 @@ export default function CourseDetailsRoute() {
     }
 
     try {
-      const response = await api.get<{ data: ClassInfo }>(`/api/v1/classes/${classId}`)
-      setClassInfo(response.data.data)
+      // Try to get class info from student API
+      const response = await api.get(`/api/student/classes/${classId}`)
+      console.log('Class info response:', response.data)
+
+      // Handle different response formats
+      const data = response.data?.data || response.data?.result || response.data
+      if (data) {
+        setClassInfo({
+          id: data.id || 0,
+          name: data.name || data.title || classId,
+          subject_name: data.subject_name || data.subjectName || data.subtitle || '',
+          teacher_name: data.teacher_name || data.teacherName || data.lecturerName || '',
+          semester: data.semester || '',
+          academic_year: data.academic_year || data.academicYear || ''
+        })
+      } else {
+        // Fallback: use classId as name if no data returned
+        setClassInfo({
+          id: 0,
+          name: classId,
+          subject_name: '',
+          teacher_name: '',
+          semester: '',
+          academic_year: ''
+        })
+      }
     } catch (err) {
       console.error('Failed to fetch class info:', err)
-      setError('Không thể tải thông tin lớp học. Vui lòng thử lại.')
+      // Don't show error, just use classId as fallback
+      setClassInfo({
+        id: 0,
+        name: classId,
+        subject_name: '',
+        teacher_name: '',
+        semester: '',
+        academic_year: ''
+      })
     } finally {
       setLoading(false)
     }
@@ -156,8 +178,17 @@ export default function CourseDetailsRoute() {
         {/* Header */}
         <PageHeader
           icon={FileText}
-          title={classInfo?.subject_name || 'Chi tiết lớp học'}
-          subtitle={`${classInfo?.name || ''} • GV: ${classInfo?.teacher_name || ''} • ${classInfo?.semester || ''} ${classInfo?.academic_year || ''}`}
+          title={classInfo?.subject_name || classInfo?.name || 'Chi tiết lớp học'}
+          subtitle={
+            [
+              classInfo?.name,
+              classInfo?.teacher_name ? `GV: ${classInfo.teacher_name}` : null,
+              classInfo?.semester,
+              classInfo?.academic_year
+            ]
+              .filter(Boolean)
+              .join(' • ') || 'Thông tin lớp học'
+          }
         />
 
         {/* Tabs */}
@@ -193,11 +224,11 @@ export default function CourseDetailsRoute() {
             </Tabs.List>
 
             <Tabs.Content value='assignments'>
-              <AssignmentTab classId={Number(classId)} />
+              <AssignmentTab classId={classId || ''} />
             </Tabs.Content>
 
             <Tabs.Content value='posts'>
-              <PostTab classId={Number(classId)} />
+              <PostTab classId={classId || ''} />
             </Tabs.Content>
           </Tabs.Root>
         </Box>

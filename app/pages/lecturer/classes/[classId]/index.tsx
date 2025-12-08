@@ -8,21 +8,26 @@ import PageHeader from '../../../../components/ui/PageHeader'
 import { ErrorDisplay } from '../../../../components/ui/ErrorDisplay'
 import { LecturerAssignmentTab, LecturerPostTab, LecturerGradeTab } from '../../../../components/lecturer'
 import { lecturerClassApi } from '../../../../services/lecturerApi'
-import type { ClassDTO } from '../../../../types'
 
 // Mock data
-const USE_MOCK_DATA = true
-
-const MOCK_CLASS_INFO: Record<string, ClassDTO> = {
-  '1': { id: 1, name: 'CS101-01', subject_id: 1, subject_name: 'Nhập môn lập trình', teacher_id: 1, teacher_name: 'Nguyễn Văn An', semester: 'HK1', academic_year: '2024-2025', student_count: 45, status: 1, created_at: '', updated_at: '' },
-  '2': { id: 2, name: 'CS201-02', subject_id: 2, subject_name: 'Cấu trúc dữ liệu', teacher_id: 1, teacher_name: 'Nguyễn Văn An', semester: 'HK1', academic_year: '2024-2025', student_count: 38, status: 1, created_at: '', updated_at: '' },
-  '3': { id: 3, name: 'CS301-01', subject_id: 3, subject_name: 'Cơ sở dữ liệu', teacher_id: 1, teacher_name: 'Nguyễn Văn An', semester: 'HK1', academic_year: '2024-2025', student_count: 42, status: 1, created_at: '', updated_at: '' }
+// Class info interface for API response
+interface ClassInfo {
+  id: string
+  name: string
+  subjectId?: string
+  subjectName?: string
+  lecturerId?: string
+  lecturerName?: string
+  semester?: string
+  academicYear?: string
+  studentCount?: number
+  status?: number
 }
 
 export default function LecturerClassDetail() {
   const { classId } = useParams<{ classId: string }>()
   const navigate = useNavigate()
-  const [classInfo, setClassInfo] = useState<ClassDTO | null>(null)
+  const [classInfo, setClassInfo] = useState<ClassInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>('assignments')
@@ -32,29 +37,36 @@ export default function LecturerClassDetail() {
     setLoading(true)
     setError(null)
 
-    if (USE_MOCK_DATA) {
-      await new Promise((r) => setTimeout(r, 300))
-      const mockData = MOCK_CLASS_INFO[classId] || {
-        id: Number(classId),
-        name: `Class-${classId}`,
-        subject_id: 1,
-        subject_name: 'Môn học mẫu',
-        teacher_id: 1,
-        semester: 'HK1',
-        academic_year: '2024-2025',
-        student_count: 30,
-        status: 1,
-        created_at: '',
-        updated_at: ''
-      }
-      setClassInfo(mockData)
-      setLoading(false)
-      return
-    }
-
     try {
-      const data = await lecturerClassApi.getClassById(Number(classId))
-      setClassInfo(data)
+      // Fetch class info from lecturer classes API
+      const response = await lecturerClassApi.getClasses()
+      const classes = (response as any)?.data || response?.results || []
+      // Find the class by ID (classId might not have CLASS# prefix)
+      const foundClass = classes.find(
+        (c: any) => c.id === classId || c.id === `CLASS#${classId}` || c.id?.replace('CLASS#', '') === classId
+      )
+
+      if (foundClass) {
+        setClassInfo({
+          id: foundClass.id,
+          name: foundClass.name,
+          subjectId: foundClass.subjectId,
+          subjectName: foundClass.subjectName,
+          lecturerId: foundClass.lecturerId || foundClass.teacherId,
+          lecturerName: foundClass.lecturerName,
+          semester: foundClass.semester,
+          academicYear: foundClass.academicYear,
+          studentCount: foundClass.studentCount || 0,
+          status: foundClass.status
+        })
+      } else {
+        // Fallback: use classId as name
+        setClassInfo({
+          id: classId,
+          name: classId,
+          studentCount: 0
+        })
+      }
     } catch (err) {
       console.error('Failed to fetch class info:', err)
       setError('Không thể tải thông tin lớp học. Vui lòng thử lại.')
@@ -103,20 +115,14 @@ export default function LecturerClassDetail() {
         {/* Header */}
         <PageHeader
           icon={FileText}
-          title={classInfo?.subject_name || 'Chi tiết lớp học'}
-          subtitle={`${classInfo?.name || ''} • ${classInfo?.student_count || 0} sinh viên • ${classInfo?.semester || ''} ${classInfo?.academic_year || ''}`}
+          title={classInfo?.subjectName || classInfo?.name || 'Chi tiết lớp học'}
+          subtitle={`${classInfo?.name || ''} • ${classInfo?.studentCount || 0} sinh viên • ${classInfo?.semester || ''} ${classInfo?.academicYear || ''}`}
         />
 
         {/* Tabs */}
         <Box px={6}>
           <Tabs.Root value={activeTab} onValueChange={(e) => setActiveTab(e.value)}>
-            <Tabs.List 
-              bg='white' 
-              borderBottom='2px solid' 
-              borderColor='gray.100' 
-              mb={6}
-              gap={0}
-            >
+            <Tabs.List bg='white' borderBottom='2px solid' borderColor='gray.100' mb={6} gap={0}>
               <Tabs.Trigger
                 value='assignments'
                 px={6}
@@ -126,8 +132,8 @@ export default function LecturerClassDetail() {
                 borderBottom='3px solid'
                 borderColor='transparent'
                 marginBottom='-2px'
-                _selected={{ 
-                  color: '#dd7323', 
+                _selected={{
+                  color: '#dd7323',
                   borderColor: '#dd7323',
                   fontWeight: 'semibold'
                 }}
@@ -148,8 +154,8 @@ export default function LecturerClassDetail() {
                 borderBottom='3px solid'
                 borderColor='transparent'
                 marginBottom='-2px'
-                _selected={{ 
-                  color: '#dd7323', 
+                _selected={{
+                  color: '#dd7323',
                   borderColor: '#dd7323',
                   fontWeight: 'semibold'
                 }}
@@ -170,8 +176,8 @@ export default function LecturerClassDetail() {
                 borderBottom='3px solid'
                 borderColor='transparent'
                 marginBottom='-2px'
-                _selected={{ 
-                  color: '#dd7323', 
+                _selected={{
+                  color: '#dd7323',
                   borderColor: '#dd7323',
                   fontWeight: 'semibold'
                 }}
@@ -186,15 +192,15 @@ export default function LecturerClassDetail() {
             </Tabs.List>
 
             <Tabs.Content value='assignments'>
-              <LecturerAssignmentTab classId={Number(classId)} />
+              <LecturerAssignmentTab classId={classId || ''} />
             </Tabs.Content>
 
             <Tabs.Content value='posts'>
-              <LecturerPostTab classId={Number(classId)} />
+              <LecturerPostTab classId={classId || ''} />
             </Tabs.Content>
 
             <Tabs.Content value='grades'>
-              <LecturerGradeTab classId={Number(classId)} studentCount={classInfo?.student_count || 0} />
+              <LecturerGradeTab classId={classId || ''} studentCount={classInfo?.studentCount || 0} />
             </Tabs.Content>
           </Tabs.Root>
         </Box>

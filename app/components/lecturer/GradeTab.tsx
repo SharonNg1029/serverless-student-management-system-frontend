@@ -1,17 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import {
-  Box,
-  Text,
-  VStack,
-  HStack,
-  Spinner,
-  Card,
-  Table,
-  Button,
-  Input
-} from '@chakra-ui/react'
+import { Box, Text, VStack, HStack, Spinner, Card, Table, Button, Input } from '@chakra-ui/react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -26,10 +16,8 @@ import StatsCard from '../ui/StatsCard'
 import EmptyState from '../ui/EmptyState'
 import { lecturerGradeApi, lecturerStudentApi } from '../../services/lecturerApi'
 
-const USE_MOCK_DATA = true
-
 interface StudentGrade {
-  id: number
+  id: string
   student_code: string
   student_name: string
   homework_avg: number | null
@@ -39,18 +27,8 @@ interface StudentGrade {
   total_score: number | null
 }
 
-const MOCK_GRADES: StudentGrade[] = [
-  { id: 1, student_code: 'SV001', student_name: 'Nguyễn Văn A', homework_avg: 8.5, project_score: 9.0, midterm_score: 7.5, final_score: 8.0, total_score: 8.2 },
-  { id: 2, student_code: 'SV002', student_name: 'Trần Thị B', homework_avg: 9.0, project_score: 8.5, midterm_score: 8.0, final_score: 9.0, total_score: 8.6 },
-  { id: 3, student_code: 'SV003', student_name: 'Lê Văn C', homework_avg: 7.0, project_score: 7.5, midterm_score: 6.5, final_score: null, total_score: null },
-  { id: 4, student_code: 'SV004', student_name: 'Phạm Thị D', homework_avg: 8.0, project_score: 8.0, midterm_score: 7.0, final_score: null, total_score: null },
-  { id: 5, student_code: 'SV005', student_name: 'Hoàng Văn E', homework_avg: 9.5, project_score: 9.5, midterm_score: 9.0, final_score: 9.5, total_score: 9.4 },
-  { id: 6, student_code: 'SV006', student_name: 'Vũ Thị F', homework_avg: 6.5, project_score: 7.0, midterm_score: 6.0, final_score: null, total_score: null },
-  { id: 7, student_code: 'SV007', student_name: 'Đặng Văn G', homework_avg: 8.0, project_score: 8.5, midterm_score: 7.5, final_score: 8.0, total_score: 8.0 }
-]
-
 interface GradeTabProps {
-  classId: number
+  classId: string
   studentCount: number
 }
 
@@ -62,18 +40,25 @@ export default function LecturerGradeTab({ classId, studentCount }: GradeTabProp
 
   const fetchGrades = useCallback(async () => {
     setLoading(true)
-    if (USE_MOCK_DATA) {
-      await new Promise((r) => setTimeout(r, 400))
-      setGrades(MOCK_GRADES)
-      setLoading(false)
-      return
-    }
     try {
-      // Fetch students and their grades
+      // Fetch students in class
       const studentsRes = await lecturerStudentApi.getStudentsInClass(classId)
-      const gradesRes = await lecturerGradeApi.getGrades(classId)
-      // Process and combine data...
-      setGrades([])
+      console.log('Students response:', studentsRes)
+      // BE trả về { data: [...], count, message, status }
+      const students = (studentsRes as any)?.data || studentsRes?.results || []
+
+      // Transform students to grade format
+      const gradesData: StudentGrade[] = students.map((s: any) => ({
+        id: s.id || s.studentId || '',
+        student_code: s.codeUser || s.studentCode || s.code || '',
+        student_name: s.name || s.studentName || '',
+        homework_avg: s.homeworkAvg ?? null,
+        project_score: s.projectScore ?? null,
+        midterm_score: s.midtermScore ?? null,
+        final_score: s.finalScore ?? null,
+        total_score: s.totalScore ?? null
+      }))
+      setGrades(gradesData)
     } catch (err) {
       console.error('Failed to fetch grades:', err)
     } finally {
@@ -106,7 +91,7 @@ export default function LecturerGradeTab({ classId, studentCount }: GradeTabProp
       g.final_score ?? '',
       g.total_score ?? ''
     ])
-    
+
     const csvContent = [headers, ...rows].map((row) => row.join(',')).join('\n')
     const blob = new Blob(['\ufeff' + csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -123,7 +108,11 @@ export default function LecturerGradeTab({ classId, studentCount }: GradeTabProp
       {
         accessorKey: 'index',
         header: 'STT',
-        cell: ({ row }) => <Text color='gray.600' fontSize='sm'>{row.index + 1}</Text>,
+        cell: ({ row }) => (
+          <Text color='gray.600' fontSize='sm'>
+            {row.index + 1}
+          </Text>
+        ),
         size: 50
       },
       {
@@ -246,13 +235,7 @@ export default function LecturerGradeTab({ classId, studentCount }: GradeTabProp
             <StatsCard label='Đã có đủ điểm' value={`${stats.complete}/${stats.total}`} icon={CheckCircle} />
           </Box>
         </HStack>
-        <Button
-          bg='#dd7323'
-          color='white'
-          borderRadius='xl'
-          _hover={{ bg: '#c5651f' }}
-          onClick={handleExport}
-        >
+        <Button bg='#dd7323' color='white' borderRadius='xl' _hover={{ bg: '#c5651f' }} onClick={handleExport}>
           <Download size={18} />
           <Text ml={2}>Xuất Excel</Text>
         </Button>
@@ -282,7 +265,14 @@ export default function LecturerGradeTab({ classId, studentCount }: GradeTabProp
       {grades.length === 0 ? (
         <EmptyState icon={Users} title='Chưa có sinh viên nào' description='Lớp học chưa có sinh viên đăng ký' />
       ) : (
-        <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.200' shadow='sm' overflow='hidden'>
+        <Card.Root
+          bg='white'
+          borderRadius='xl'
+          border='1px solid'
+          borderColor='orange.200'
+          shadow='sm'
+          overflow='hidden'
+        >
           <Table.Root size='sm'>
             <Table.Header>
               {table.getHeaderGroups().map((headerGroup) => (

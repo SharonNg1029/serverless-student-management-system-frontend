@@ -1,105 +1,105 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { Bell, Trash2, Loader2 } from 'lucide-react'
+import api from '../../utils/axios'
+
+// API response format from BE
+interface NotificationFromAPI {
+  id: string
+  title: string
+  content: string
+  type: string // "SYSTEM_ALERT", "INFO", "CLASS", etc.
+  isRead: boolean
+  createdAt: string
+  className?: string
+  classId?: string
+}
 
 interface Notification {
-  id: number
+  id: string
   title: string
   content: string
   type: 'system' | 'class' | 'personal'
-  class_id?: number
+  class_id?: string
   className?: string
   sent_at: string
   read: boolean
 }
 
-const MOCK_NOTIFICATIONS: Notification[] = [
-  {
-    id: 1,
-    title: 'Thông báo hạn nộp bài tập',
-    content: 'Bài tập tuần 5 của lớp Lập trình Web 101 sẽ hết hạn vào 18:00 ngày mai',
-    type: 'class',
-    className: 'Lập trình Web 101',
-    class_id: 1,
-    sent_at: '2024-11-28T14:30:00',
-    read: false
-  },
-  {
-    id: 2,
-    title: 'Điểm kiểm tra đã công bố',
-    content: 'Giảng viên đã công bố điểm kiểm tra của lớp Cơ sở dữ liệu. Bạn đạt 9.0/10',
-    type: 'class',
-    className: 'Cơ sở dữ liệu',
-    class_id: 2,
-    sent_at: '2024-11-28T10:15:00',
-    read: false
-  },
-  {
-    id: 3,
-    title: 'Lịch học thay đổi',
-    content: 'Lớp Kiến trúc máy tính sẽ học vào lúc 10:00 - 11:30 thay vì 09:00 - 10:30 vào thứ 6',
-    type: 'class',
-    className: 'Kiến trúc máy tính',
-    class_id: 3,
-    sent_at: '2024-11-27T16:45:00',
-    read: true
-  },
-  {
-    id: 4,
-    title: 'Cập nhật hệ thống',
-    content: 'Hệ thống học tập sẽ bảo trì vào 22:00 - 23:00 ngày 30/11/2024',
-    type: 'system',
-    sent_at: '2024-11-27T09:00:00',
-    read: true
-  },
-  {
-    id: 5,
-    title: 'Có bình luận mới trong bài đăng của bạn',
-    content: 'Giảng viên Nguyễn Văn A đã bình luận về câu hỏi của bạn',
-    type: 'personal',
-    sent_at: '2024-11-26T15:20:00',
-    read: true
-  },
-  {
-    id: 6,
-    title: 'Tham gia lớp thành công',
-    content: 'Bạn đã được chấp nhận tham gia lớp Lập trình OOP (C002)',
-    type: 'class',
-    className: 'Lập trình OOP',
-    class_id: 4,
-    sent_at: '2024-11-25T12:30:00',
-    read: true
+// Map BE type to UI type
+const mapNotificationType = (type?: string): 'system' | 'class' | 'personal' => {
+  switch (type?.toUpperCase()) {
+    case 'SYSTEM_ALERT':
+    case 'SYSTEM':
+      return 'system'
+    case 'CLASS':
+    case 'INFO':
+      return 'class'
+    case 'PERSONAL':
+      return 'personal'
+    default:
+      return 'system'
   }
-]
+}
 
 export default function NotificationsReceiveRoute() {
-  const [notifications, setNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS)
-  const [loading, setLoading] = useState(false)
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'system' | 'class' | 'personal' | 'unread'>('all')
 
-  useEffect(() => {
-    fetchNotifications()
-  }, [])
-
-  const fetchNotifications = async () => {
+  const fetchNotifications = useCallback(async () => {
     setLoading(true)
     try {
-      // TODO: Replace with API call
-      await new Promise((resolve) => setTimeout(resolve, 300))
+      // API: GET /api/notifications
+      const response = await api.get<{ results: NotificationFromAPI[] }>('/api/notifications')
+      console.log('Notifications response:', response.data)
+
+      // Transform API response to local format
+      const mappedNotifications: Notification[] = (response.data.results || []).map((n) => ({
+        id: String(n.id),
+        title: n.title || 'Thông báo',
+        content: n.content || '',
+        type: mapNotificationType(n.type),
+        class_id: n.classId,
+        className: n.className,
+        sent_at: n.createdAt || new Date().toISOString(),
+        read: n.isRead ?? false
+      }))
+
+      setNotifications(mappedNotifications)
     } catch (error) {
       console.error('Failed to fetch notifications:', error)
+      setNotifications([])
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  useEffect(() => {
+    fetchNotifications()
+  }, [fetchNotifications])
+
+  const handleDelete = async (id: string) => {
+    try {
+      // Optimistic update
+      setNotifications(notifications.filter((n) => n.id !== id))
+      // API call (if exists)
+      await api.delete(`/api/notifications/${id}`).catch(() => {})
+    } catch (error) {
+      console.error('Failed to delete notification:', error)
+    }
   }
 
-  const handleDelete = (id: number) => {
-    setNotifications(notifications.filter((n) => n.id !== id))
-  }
-
-  const handleMarkAsRead = (id: number) => {
-    setNotifications(notifications.map((n) => (n.id === id ? { ...n, read: true } : n)))
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      // Optimistic update
+      setNotifications(notifications.map((n) => (n.id === id ? { ...n, read: true } : n)))
+      // API: PATCH /api/notifications/:id/read
+      await api.patch(`/api/notifications/${id}/read`).catch(() => {})
+    } catch (error) {
+      console.error('Failed to mark as read:', error)
+    }
   }
 
   const getFilteredNotifications = () => {

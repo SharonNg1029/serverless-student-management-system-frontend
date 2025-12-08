@@ -20,6 +20,22 @@ interface UserProfileResponse {
   }
 }
 
+// Helper function để normalize role (API có thể trả về lowercase)
+const normalizeRole = (role?: string | null): 'Student' | 'Lecturer' | 'Admin' => {
+  if (!role) return 'Student'
+  const lowerRole = role.toLowerCase()
+  switch (lowerRole) {
+    case 'admin':
+      return 'Admin'
+    case 'lecturer':
+      return 'Lecturer'
+    case 'student':
+      return 'Student'
+    default:
+      return 'Student'
+  }
+}
+
 export default function LoginRoute() {
   const navigate = useNavigate()
   const { loginWithCognito, loginWithGoogle, confirmNewPassword, setLoading, isLoading, updateUser } = useAuthStore()
@@ -34,176 +50,176 @@ export default function LoginRoute() {
   const getRedirectPathByRole = (role: string): string => {
     switch (role) {
       case 'Admin':
-        return '/admin/dashboard';
+        return '/admin/settings' // Admin luôn vào Settings thay vì Dashboard
       case 'Lecturer':
-        return '/lecturer/dashboard';
+        return '/lecturer/dashboard'
       case 'Student':
-        return '/home';
+        return '/home'
       default:
-        return '/home';
+        return '/home'
     }
-  };
+  }
 
   // Fetch user profile từ API và cập nhật store
   const fetchUserProfile = async (): Promise<string | null> => {
     try {
       // Lấy accessToken từ store (vừa được set sau login)
-      const { accessToken } = useAuthStore.getState();
-      
+      const { accessToken } = useAuthStore.getState()
+
       if (!accessToken) {
-        console.warn('No access token available for fetching user profile');
-        return null;
+        console.warn('No access token available for fetching user profile')
+        return null
       }
-      
+
       const response = await api.get<UserProfileResponse>('/api/users/profile', {
         headers: {
           Authorization: `Bearer ${accessToken}`
         }
-      });
-      
-      const profileData = response.data.data;
-      
+      })
+
+      const profileData = response.data.data
+
       // Cập nhật user info vào store
       updateUser({
         id: profileData.id,
         fullName: profileData.name,
         email: profileData.email,
         avatar: profileData.avatar,
-        role: (profileData.role as 'Student' | 'Lecturer' | 'Admin') || 'Student',
+        role: normalizeRole(profileData.role)
         // Lưu thêm các thông tin khác nếu cần
-      });
-      
-      // Trả về role để redirect
-      return profileData.role;
+      })
+
+      // Trả về role đã normalize để redirect
+      return normalizeRole(profileData.role)
     } catch (error) {
-      console.error('Failed to fetch user profile:', error);
-      return null;
+      console.error('Failed to fetch user profile:', error)
+      return null
     }
-  };
+  }
 
   const handleNormalLogin = async (values: { email: string; password: string }) => {
     try {
-      setLoading(true);
-      setLocalError(null);
+      setLoading(true)
+      setLocalError(null)
       // Login với Cognito
-      const result = await loginWithCognito(values.email, values.password);
+      const result = await loginWithCognito(values.email, values.password)
       // Kiểm tra nếu cần đổi mật khẩu
       if (result?.requireNewPassword) {
-        setRequireNewPassword(true);
-        setLoading(false);
+        setRequireNewPassword(true)
+        setLoading(false)
         toaster.create({
           title: 'Yêu cầu đổi mật khẩu',
           description: 'Bạn cần đổi mật khẩu để tiếp tục.',
           type: 'warning',
           duration: 4000,
-          meta: { closable: true },
-        });
-        return;
+          meta: { closable: true }
+        })
+        return
       }
       // Đợi 100ms để Zustand persist lưu vào localStorage
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
       // Gọi API lấy thông tin user profile
-      const profileRole = await fetchUserProfile();
-      
+      const profileRole = await fetchUserProfile()
+
       toaster.create({
         title: 'Đăng nhập thành công',
         type: 'success',
         duration: 3000,
-        meta: { closable: true },
-      });
+        meta: { closable: true }
+      })
       // Lấy thông tin user từ store để xác định role
-      const { user } = useAuthStore.getState();
+      const { user } = useAuthStore.getState()
       // Ưu tiên role từ API profile, nếu không có thì dùng từ Cognito
-      const finalRole = profileRole || user?.role || 'Student';
-      const redirectPath = getRedirectPathByRole(finalRole);
+      const finalRole = profileRole || user?.role || 'Student'
+      const redirectPath = getRedirectPathByRole(finalRole)
       // Redirect dựa trên role
-      navigate(redirectPath, { replace: true });
+      navigate(redirectPath, { replace: true })
     } catch (error: any) {
-      const errorMessage = error.message || "Đăng nhập thất bại. Vui lòng kiểm tra email và mật khẩu.";
-      setLocalError(errorMessage);
+      const errorMessage = error.message || 'Đăng nhập thất bại. Vui lòng kiểm tra email và mật khẩu.'
+      setLocalError(errorMessage)
       toaster.create({
         title: 'Đăng nhập thất bại',
         description: errorMessage,
         type: 'error',
         duration: 5000,
-        meta: { closable: true },
-      });
+        meta: { closable: true }
+      })
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const handleNewPasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault()
     if (newPasswordData.newPassword !== newPasswordData.confirmPassword) {
-      setLocalError('Mật khẩu xác nhận không khớp!');
+      setLocalError('Mật khẩu xác nhận không khớp!')
       toaster.create({
         title: 'Lỗi xác nhận mật khẩu',
         description: 'Mật khẩu xác nhận không khớp!',
         type: 'error',
         duration: 4000,
-        meta: { closable: true },
-      });
-      return;
+        meta: { closable: true }
+      })
+      return
     }
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/;
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[!@#$%^&*(),.?":{}|<>]).{8,}$/
     if (!passwordRegex.test(newPasswordData.newPassword)) {
-      const msg = 'Mật khẩu phải có ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường và ký tự đặc biệt!';
-      setLocalError(msg);
+      const msg = 'Mật khẩu phải có ít nhất 8 ký tự, bao gồm chữ hoa, chữ thường và ký tự đặc biệt!'
+      setLocalError(msg)
       toaster.create({
         title: 'Mật khẩu không đủ mạnh',
         description: msg,
         type: 'warning',
         duration: 4000,
-        meta: { closable: true },
-      });
-      return;
+        meta: { closable: true }
+      })
+      return
     }
     try {
-      setLoading(true);
-      setLocalError(null);
+      setLoading(true)
+      setLocalError(null)
       // Xác nhận mật khẩu mới
-      await confirmNewPassword(newPasswordData.newPassword);
+      await confirmNewPassword(newPasswordData.newPassword)
       // Đợi 100ms để Zustand persist lưu vào localStorage
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
       // Gọi API lấy thông tin user profile
-      const profileRole = await fetchUserProfile();
-      
+      const profileRole = await fetchUserProfile()
+
       // Lấy thông tin user từ store để xác định role
-      const { user } = useAuthStore.getState();
+      const { user } = useAuthStore.getState()
       // Ưu tiên role từ API profile, nếu không có thì dùng từ Cognito
-      const finalRole = profileRole || user?.role || 'Student';
-      const redirectPath = getRedirectPathByRole(finalRole);
-      
+      const finalRole = profileRole || user?.role || 'Student'
+      const redirectPath = getRedirectPathByRole(finalRole)
+
       toaster.create({
         title: 'Đổi mật khẩu thành công',
         description: 'Mật khẩu của bạn đã được cập nhật!',
         type: 'success',
         duration: 3000,
-        meta: { closable: true },
-      });
+        meta: { closable: true }
+      })
       // Redirect dựa trên role sau khi đổi mật khẩu thành công
-      navigate(redirectPath, { replace: true });
+      navigate(redirectPath, { replace: true })
     } catch (error: any) {
-      const errorMessage = error.message || "Đổi mật khẩu thất bại. Vui lòng thử lại.";
-      setLocalError(errorMessage);
+      const errorMessage = error.message || 'Đổi mật khẩu thất bại. Vui lòng thử lại.'
+      setLocalError(errorMessage)
       toaster.create({
         title: 'Đổi mật khẩu thất bại',
         description: errorMessage,
         type: 'error',
         duration: 5000,
-        meta: { closable: true },
-      });
+        meta: { closable: true }
+      })
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    handleNormalLogin(formData);
+    handleNormalLogin(formData)
   }
 
   const handleForgotPassword = () => {
@@ -212,137 +228,124 @@ export default function LoginRoute() {
 
   const handleGoogleSuccess = async (credential: string) => {
     try {
-      setLocalError(null);
-      
+      setLocalError(null)
+
       // Gọi loginWithGoogle từ authStore
-      await loginWithGoogle(credential);
-      
+      await loginWithGoogle(credential)
+
       // Gọi API lấy thông tin user profile
-      const profileRole = await fetchUserProfile();
-      
+      const profileRole = await fetchUserProfile()
+
       // Lấy thông tin user từ store sau khi login
-      const { user } = useAuthStore.getState();
-      
+      const { user } = useAuthStore.getState()
+
       toaster.create({
         title: 'Đăng nhập Google thành công',
         description: `Xin chào, ${user?.fullName}!`,
         type: 'success',
-        duration: 3000,
-      });
+        duration: 3000
+      })
 
       // Ưu tiên role từ API profile, nếu không có thì dùng từ Cognito
-      const finalRole = profileRole || user?.role || 'Student';
-      const redirectPath = getRedirectPathByRole(finalRole);
-      
+      const finalRole = profileRole || user?.role || 'Student'
+      const redirectPath = getRedirectPathByRole(finalRole)
+
       // Đợi một chút để toast hiển thị
-      await new Promise(resolve => setTimeout(resolve, 500));
-      navigate(redirectPath, { replace: true });
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      navigate(redirectPath, { replace: true })
     } catch (error: any) {
-      console.error('Google login error:', error);
-      setLocalError(error.message || 'Đăng nhập Google thất bại');
+      console.error('Google login error:', error)
+      setLocalError(error.message || 'Đăng nhập Google thất bại')
       toaster.create({
         title: 'Đăng nhập Google thất bại',
         description: error.message || 'Có lỗi xảy ra khi đăng nhập',
         type: 'error',
-        duration: 5000,
-      });
+        duration: 5000
+      })
     }
-  };
+  }
 
   const handleGoogleError = () => {
     toaster.create({
       title: 'Đăng nhập Google thất bại',
       description: 'Không thể kết nối với Google',
       type: 'error',
-      duration: 5000,
-    });
-  };
+      duration: 5000
+    })
+  }
 
   return (
-    <div className="login-container">
-      <div className="login-wrapper">
-        <div className="login-header">
-          <div className="login-brand">
-          <img 
-            src="/Logo_AWS_FCJ.png" 
-            alt="LMS FCJ Logo" 
-            className="login-logo"
-          />
+    <div className='login-container'>
+      <div className='login-wrapper'>
+        <div className='login-header'>
+          <div className='login-brand'>
+            <img src='/Logo_AWS_FCJ.png' alt='LMS FCJ Logo' className='login-logo' />
+          </div>
         </div>
-      </div>
 
-        <div className="login-body">
+        <div className='login-body'>
           {!requireNewPassword ? (
-            <form onSubmit={handleSubmit} className="login-form">
+            <form onSubmit={handleSubmit} className='login-form'>
               <h2>Đăng nhập</h2>
-              <p className="form-subtitle">Đăng nhập vào tài khoản của bạn</p>
+              <p className='form-subtitle'>Đăng nhập vào tài khoản của bạn</p>
 
-              <div className="form-group">
-                <label htmlFor="email">Email</label>
+              <div className='form-group'>
+                <label htmlFor='email'>Email</label>
                 <input
-                  id="email"
-                  type="email"
-                  placeholder="your@email.com"
+                  id='email'
+                  type='email'
+                  placeholder='your@email.com'
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   required
                 />
               </div>
 
-              <div className="form-group">
-                <label htmlFor="password">Mật khẩu</label>
-                <div className="password-input">
+              <div className='form-group'>
+                <label htmlFor='password'>Mật khẩu</label>
+                <div className='password-input'>
                   <input
-                    id="password"
+                    id='password'
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••••••"
+                    placeholder='••••••••••••'
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    autoComplete="current-password"
+                    autoComplete='current-password'
                     required
                   />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
+                  <button type='button' className='password-toggle' onClick={() => setShowPassword(!showPassword)}>
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                   </button>
                 </div>
               </div>
 
-              <div className="form-options">
-                <button 
-                  type="button" 
-                  className="forgot-password"
-                  onClick={handleForgotPassword}
-                >
+              <div className='form-options'>
+                <button type='button' className='forgot-password' onClick={handleForgotPassword}>
                   Quên mật khẩu?
                 </button>
               </div>
 
               {localError && (
-                <div className="error-message" style={{ 
-                  color: '#ef4444', 
-                  fontSize: '14px', 
-                  marginBottom: '12px',
-                  padding: '8px',
-                  backgroundColor: '#fee2e2',
-                  borderRadius: '4px'
-                }}>
+                <div
+                  className='error-message'
+                  style={{
+                    color: '#ef4444',
+                    fontSize: '14px',
+                    marginBottom: '12px',
+                    padding: '8px',
+                    backgroundColor: '#fee2e2',
+                    borderRadius: '4px'
+                  }}
+                >
                   {localError}
                 </div>
               )}
 
-              <button 
-                type="submit" 
-                className="btn-submit"
-                disabled={isLoading}
-              >
+              <button type='submit' className='btn-submit' disabled={isLoading}>
                 {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
               </button>
 
-              <div className="divider">
+              <div className='divider'>
                 <span>Hoặc</span>
               </div>
 
@@ -357,26 +360,26 @@ export default function LoginRoute() {
               */}
             </form>
           ) : (
-            <form onSubmit={handleNewPasswordSubmit} className="login-form">
+            <form onSubmit={handleNewPasswordSubmit} className='login-form'>
               <h2>Đổi mật khẩu</h2>
-              <p className="form-subtitle">Bạn cần đổi mật khẩu để tiếp tục</p>
+              <p className='form-subtitle'>Bạn cần đổi mật khẩu để tiếp tục</p>
 
-              <div className="form-group">
-                <label htmlFor="newPassword">Mật khẩu mới</label>
-                <div className="password-input">
+              <div className='form-group'>
+                <label htmlFor='newPassword'>Mật khẩu mới</label>
+                <div className='password-input'>
                   <input
-                    id="newPassword"
+                    id='newPassword'
                     type={showNewPassword ? 'text' : 'password'}
-                    placeholder="Mật khẩu mới (8+ ký tự, hoa, thường, đặc biệt)"
+                    placeholder='Mật khẩu mới (8+ ký tự, hoa, thường, đặc biệt)'
                     value={newPasswordData.newPassword}
                     onChange={(e) => setNewPasswordData({ ...newPasswordData, newPassword: e.target.value })}
-                    autoComplete="new-password"
+                    autoComplete='new-password'
                     required
                     minLength={8}
                   />
                   <button
-                    type="button"
-                    className="password-toggle"
+                    type='button'
+                    className='password-toggle'
                     onClick={() => setShowNewPassword(!showNewPassword)}
                   >
                     {showNewPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -384,22 +387,22 @@ export default function LoginRoute() {
                 </div>
               </div>
 
-              <div className="form-group">
-                <label htmlFor="confirmPassword">Xác nhận mật khẩu</label>
-                <div className="password-input">
+              <div className='form-group'>
+                <label htmlFor='confirmPassword'>Xác nhận mật khẩu</label>
+                <div className='password-input'>
                   <input
-                    id="confirmPassword"
+                    id='confirmPassword'
                     type={showConfirmPassword ? 'text' : 'password'}
-                    placeholder="Nhập lại mật khẩu mới"
+                    placeholder='Nhập lại mật khẩu mới'
                     value={newPasswordData.confirmPassword}
                     onChange={(e) => setNewPasswordData({ ...newPasswordData, confirmPassword: e.target.value })}
-                    autoComplete="new-password"
+                    autoComplete='new-password'
                     required
                     minLength={8}
                   />
                   <button
-                    type="button"
-                    className="password-toggle"
+                    type='button'
+                    className='password-toggle'
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   >
                     {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -408,33 +411,32 @@ export default function LoginRoute() {
               </div>
 
               {localError && (
-                <div className="error-message" style={{ 
-                  color: '#ef4444', 
-                  fontSize: '14px', 
-                  marginBottom: '12px',
-                  padding: '8px',
-                  backgroundColor: '#fee2e2',
-                  borderRadius: '4px'
-                }}>
+                <div
+                  className='error-message'
+                  style={{
+                    color: '#ef4444',
+                    fontSize: '14px',
+                    marginBottom: '12px',
+                    padding: '8px',
+                    backgroundColor: '#fee2e2',
+                    borderRadius: '4px'
+                  }}
+                >
                   {localError}
                 </div>
               )}
 
-              <button 
-                type="submit" 
-                className="btn-submit"
-                disabled={isLoading}
-              >
+              <button type='submit' className='btn-submit' disabled={isLoading}>
                 {isLoading ? 'Đang xử lý...' : 'Đổi mật khẩu'}
               </button>
 
-              <button 
-                type="button" 
-                className="forgot-password"
+              <button
+                type='button'
+                className='forgot-password'
                 onClick={() => {
-                  setRequireNewPassword(false);
-                  setLocalError(null);
-                  setNewPasswordData({ newPassword: '', confirmPassword: '' });
+                  setRequireNewPassword(false)
+                  setLocalError(null)
+                  setNewPasswordData({ newPassword: '', confirmPassword: '' })
                 }}
                 style={{ marginTop: '12px', width: '100%', textAlign: 'center' }}
               >

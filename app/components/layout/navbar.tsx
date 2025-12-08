@@ -25,18 +25,10 @@ export default function Navbar() {
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Get search type based on user role
+  // Tạm thời tất cả role đều search theo type 'classes' vì BE chưa hỗ trợ type khác
   const getSearchType = (): SearchType => {
-    if (!user) return 'all'
-    switch (user.role) {
-      case 'Admin':
-        return 'all'
-      case 'Lecturer':
-        return 'class'
-      case 'Student':
-        return 'class'
-      default:
-        return 'all'
-    }
+    // TODO: Sau này khi BE hỗ trợ thêm type khác thì sửa lại theo role
+    return 'classes'
   }
 
   // Handle search
@@ -48,13 +40,16 @@ export default function Navbar() {
     }
 
     setIsSearching(true)
+    setShowResults(true) // Show dropdown ngay khi bắt đầu search
     try {
+      const searchType = getSearchType()
+      // Gửi keyword nguyên bản, BE sẽ tự xử lý case-insensitive
       const response = await search({
-        type: getSearchType(),
+        type: searchType,
         keyword: query
       })
+      console.log('Search results:', response)
       setSearchResults(response.data || [])
-      setShowResults(true)
     } catch (error) {
       console.error('Search error:', error)
       setSearchResults([])
@@ -77,12 +72,26 @@ export default function Navbar() {
     }, 300)
   }
 
+  // Handle Enter key - navigate to search results page
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && searchQuery.trim()) {
+      setShowResults(false)
+      // Navigate to search results page with keyword
+      navigate(`/student/search?keyword=${encodeURIComponent(searchQuery)}&type=classes`)
+    }
+  }
+
   // Handle result click
   const handleResultClick = (result: SearchResult) => {
     setShowResults(false)
     setSearchQuery('')
-    if (result.url) {
-      navigate(result.url)
+    // Navigate to course details for class type
+    if (result.type === 'class') {
+      const classId = result.id.replace('CLASS#', '')
+      navigate(`/student/course-details/${classId}`)
+    } else if (result.type === 'subject') {
+      const subjectId = result.id.replace('SUBJECT#', '')
+      navigate(`/student/all-courses?subject=${subjectId}`)
     }
   }
 
@@ -105,26 +114,24 @@ export default function Navbar() {
     switch (user.role) {
       case 'Admin':
         return [
-          { label: 'Dashboard', href: '/admin/dashboard' },
+          { label: 'Cấu hình', href: '/admin/settings' },
           { label: 'Người dùng', href: '/admin/users-management/list' },
           { label: 'Môn học', href: '/admin/subjects-management/list' },
           { label: 'Lớp học', href: '/admin/classes-management/list' },
-          { label: 'Cấu hình', href: '/admin/settings' },
           { label: 'Nhật ký', href: '/admin/audit-logs' }
         ]
 
       case 'Lecturer':
         return [
           { label: 'Dashboard', href: '/lecturer/dashboard' },
-          { label: 'My Courses', href: '/lecturer/my-courses' }
+          { label: 'My Courses', href: '/lecturer/my-courses' },
+          { label: 'Gửi thông báo', href: '/lecturer/notifications-send' }
         ]
 
       case 'Student':
         return [
           { label: 'Home', href: '/home' },
-          { label: 'My Courses', href: '/student/my-courses' },
-          { label: 'All Courses', href: '/student/all-courses' },
-          { label: 'Ranking', href: '/student/ranking' }
+          { label: 'My Courses', href: '/student/my-courses' }
         ]
 
       default:
@@ -134,11 +141,26 @@ export default function Navbar() {
 
   const navItems = getNavItems()
 
+  // Get home path based on role - Admin goes to settings
+  const getHomePath = () => {
+    if (!user) return '/home'
+    switch (user.role) {
+      case 'Admin':
+        return '/admin/settings'
+      case 'Lecturer':
+        return '/lecturer/dashboard'
+      case 'Student':
+        return '/home'
+      default:
+        return '/home'
+    }
+  }
+
   return (
     <div className='navbar-wrapper'>
       <nav className='navbar'>
         <div className='navbar-container'>
-          <Link to='/home' className='navbar-logo'>
+          <Link to={getHomePath()} className='navbar-logo'>
             <img src='/Logo_AWS_FCJ.png' alt='LMS FCJ' style={{ height: '40px' }} />
           </Link>
 
@@ -178,9 +200,10 @@ export default function Navbar() {
                 <Search size={18} style={{ color: 'rgba(255, 255, 255, 0.7)' }} />
                 <input
                   type='text'
-                  placeholder='Search...'
+                  placeholder='Search... (Enter để xem tất cả)'
                   value={searchQuery}
                   onChange={handleSearchChange}
+                  onKeyDown={handleKeyDown}
                   onFocus={() => searchQuery && setShowResults(true)}
                   style={{
                     background: 'none',
@@ -224,38 +247,60 @@ export default function Navbar() {
                   }}
                 >
                   {searchResults.length > 0 ? (
-                    searchResults.map((result, index) => (
+                    <>
+                      {searchResults.slice(0, 5).map((result, index) => (
+                        <div
+                          key={`${result.type}-${result.id}-${index}`}
+                          onClick={() => handleResultClick(result)}
+                          style={{
+                            padding: '0.75rem 1rem',
+                            cursor: 'pointer',
+                            borderBottom: '1px solid #eee',
+                            transition: 'background-color 0.2s'
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f5f5f5')}
+                          onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                        >
+                          <div style={{ fontWeight: 500, color: '#333', fontSize: '14px' }}>{result.title}</div>
+                          {result.subtitle && (
+                            <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>{result.subtitle}</div>
+                          )}
+                          <div
+                            style={{
+                              fontSize: '11px',
+                              color: result.type === 'class' ? '#3b82f6' : '#22c55e',
+                              marginTop: '4px',
+                              textTransform: 'capitalize'
+                            }}
+                          >
+                            {result.type === 'class' ? 'Lớp học' : 'Môn học'}
+                          </div>
+                        </div>
+                      ))}
+                      {/* Show "View all" link */}
                       <div
-                        key={`${result.type}-${result.id}-${index}`}
-                        onClick={() => handleResultClick(result)}
+                        onClick={() => {
+                          setShowResults(false)
+                          navigate(`/student/search?keyword=${encodeURIComponent(searchQuery)}&type=classes`)
+                        }}
                         style={{
                           padding: '0.75rem 1rem',
                           cursor: 'pointer',
-                          borderBottom: index < searchResults.length - 1 ? '1px solid #eee' : 'none',
+                          textAlign: 'center',
+                          color: '#e38214',
+                          fontWeight: 500,
+                          fontSize: '14px',
                           transition: 'background-color 0.2s'
                         }}
-                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#f5f5f5')}
+                        onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#fff7ed')}
                         onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
                       >
-                        <div style={{ fontWeight: 500, color: '#333', fontSize: '14px' }}>{result.title}</div>
-                        {result.description && (
-                          <div style={{ fontSize: '12px', color: '#666', marginTop: '2px' }}>{result.description}</div>
-                        )}
-                        <div
-                          style={{
-                            fontSize: '11px',
-                            color: '#e38214',
-                            marginTop: '4px',
-                            textTransform: 'capitalize'
-                          }}
-                        >
-                          {result.type}
-                        </div>
+                        Xem tất cả kết quả →
                       </div>
-                    ))
+                    </>
                   ) : (
                     <div style={{ padding: '1rem', textAlign: 'center', color: '#666', fontSize: '14px' }}>
-                      No results found
+                      Không tìm thấy kết quả
                     </div>
                   )}
                 </div>

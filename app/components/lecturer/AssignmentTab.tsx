@@ -52,23 +52,13 @@ const gradingFilterCollection = createListCollection({
   ]
 })
 
-const USE_MOCK_DATA = true
-
 // Extended mock data with graded_count
 interface ExtendedAssignmentDTO extends AssignmentDTO {
   graded_count?: number
 }
 
-const MOCK_ASSIGNMENTS: ExtendedAssignmentDTO[] = [
-  { id: 1, class_id: 1, title: 'Lab 01 - Giới thiệu Python', description: '', type: 'homework', weight: 0.2, deadline: '2024-10-10T23:59:00Z', max_score: 10, is_published: true, submission_count: 40, graded_count: 40, created_at: '', updated_at: '' },
-  { id: 2, class_id: 1, title: 'Lab 02 - Biến và kiểu dữ liệu', description: '', type: 'homework', weight: 0.2, deadline: '2024-10-17T23:59:00Z', max_score: 10, is_published: true, submission_count: 38, graded_count: 30, created_at: '', updated_at: '' },
-  { id: 3, class_id: 1, title: 'Project Phase 1', description: '', type: 'project', weight: 0.3, deadline: '2024-10-25T23:59:00Z', max_score: 10, is_published: true, submission_count: 35, graded_count: 0, created_at: '', updated_at: '' },
-  { id: 4, class_id: 1, title: 'Kiểm tra giữa kỳ', description: '', type: 'midterm', weight: 0.25, deadline: '2024-11-15T10:00:00Z', max_score: 10, is_published: true, submission_count: 45, graded_count: 45, created_at: '', updated_at: '' },
-  { id: 5, class_id: 1, title: 'Lab 03 - Vòng lặp', description: '', type: 'homework', weight: 0.2, deadline: '2025-12-20T23:59:00Z', max_score: 10, is_published: false, submission_count: 0, graded_count: 0, created_at: '', updated_at: '' }
-]
-
 interface AssignmentTabProps {
-  classId: number
+  classId: string
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -90,26 +80,23 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
   const [assignments, setAssignments] = useState<ExtendedAssignmentDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [sorting, setSorting] = useState<SortingState>([])
-  
+
   // Filters
   const [searchKeyword, setSearchKeyword] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
   const [gradingFilter, setGradingFilter] = useState<string>('')
-  
+
   // Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
 
   const fetchAssignments = useCallback(async () => {
     setLoading(true)
-    if (USE_MOCK_DATA) {
-      await new Promise((r) => setTimeout(r, 400))
-      setAssignments(MOCK_ASSIGNMENTS)
-      setLoading(false)
-      return
-    }
     try {
       const response = await lecturerAssignmentApi.getAssignments(classId)
-      setAssignments(response.results || [])
+      console.log('Assignments response:', response)
+      // BE trả về { data: [...], count, message, status }
+      const data = (response as any)?.data || response?.results || []
+      setAssignments(data)
     } catch (err) {
       console.error('Failed to fetch assignments:', err)
     } finally {
@@ -125,12 +112,11 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
   const filteredAssignments = useMemo(() => {
     return assignments.filter((a) => {
       // Search filter
-      const matchesSearch = !searchKeyword || 
-        a.title.toLowerCase().includes(searchKeyword.toLowerCase())
-      
+      const matchesSearch = !searchKeyword || a.title.toLowerCase().includes(searchKeyword.toLowerCase())
+
       // Type filter
       const matchesType = !typeFilter || a.type === typeFilter
-      
+
       // Grading status filter
       let matchesGrading = true
       if (gradingFilter === 'graded') {
@@ -140,7 +126,7 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
       } else if (gradingFilter === 'no_submission') {
         matchesGrading = (a.submission_count || 0) === 0
       }
-      
+
       return matchesSearch && matchesType && matchesGrading
     })
   }, [assignments, searchKeyword, typeFilter, gradingFilter])
@@ -149,9 +135,7 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
   const stats = useMemo(() => {
     const total = assignments.length
     const published = assignments.filter((a) => a.is_published).length
-    const pendingGrade = assignments.filter((a) => 
-      (a.graded_count || 0) < (a.submission_count || 0)
-    ).length
+    const pendingGrade = assignments.filter((a) => (a.graded_count || 0) < (a.submission_count || 0)).length
     return { total, published, pendingGrade }
   }, [assignments])
 
@@ -159,7 +143,7 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
   const getGradingStatus = (assignment: ExtendedAssignmentDTO) => {
     const submitted = assignment.submission_count || 0
     const graded = assignment.graded_count || 0
-    
+
     if (submitted === 0) {
       return { label: 'Chưa có bài nộp', color: 'gray' }
     }
@@ -175,7 +159,11 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
       {
         accessorKey: 'index',
         header: 'STT',
-        cell: ({ row }) => <Text color='gray.600' fontSize='sm'>{row.index + 1}</Text>,
+        cell: ({ row }) => (
+          <Text color='gray.600' fontSize='sm'>
+            {row.index + 1}
+          </Text>
+        ),
         size: 50
       },
       {
@@ -231,12 +219,7 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
         cell: ({ row }) => {
           const status = getGradingStatus(row.original)
           return (
-            <Badge
-              colorPalette={status.color}
-              variant='solid'
-              borderRadius='full'
-              size='sm'
-            >
+            <Badge colorPalette={status.color} variant='solid' borderRadius='full' size='sm'>
               {status.label}
             </Badge>
           )
@@ -259,7 +242,7 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
   const handleRowClick = (assignment: ExtendedAssignmentDTO) => {
     const submitted = assignment.submission_count || 0
     const graded = assignment.graded_count || 0
-    
+
     // Nếu đã chấm hết hoặc chưa có bài nộp -> chuyển sang trang xem điểm (view mode)
     // Nếu còn bài chưa chấm -> chuyển sang trang chấm điểm (grading mode)
     if (submitted === 0 || graded >= submitted) {
@@ -270,30 +253,9 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
   }
 
   const handleCreateAssignment = async (data: AssignmentFormData) => {
-    if (USE_MOCK_DATA) {
-      // Mock create
-      const newAssignment: ExtendedAssignmentDTO = {
-        id: Date.now(),
-        class_id: classId,
-        title: data.title,
-        description: data.description,
-        type: data.type,
-        weight: data.type === 'homework' ? 0.2 : data.type === 'project' ? 0.3 : 0.25,
-        deadline: data.deadline,
-        max_score: data.max_score,
-        is_published: data.is_published,
-        submission_count: 0,
-        graded_count: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      }
-      setAssignments((prev) => [...prev, newAssignment])
-      return
-    }
-    
     // Use new API: POST /lecturer/assignments
     await lecturerAssignmentApi.createAssignment({
-      class_id: classId,
+      class_id: parseInt(classId),
       title: data.title,
       description: data.description,
       type: data.type,
@@ -369,11 +331,7 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
               size='md'
               w='160px'
             >
-              <SelectTrigger
-                borderColor='orange.200'
-                borderRadius='xl'
-                _hover={{ borderColor: '#dd7323' }}
-              >
+              <SelectTrigger borderColor='orange.200' borderRadius='xl' _hover={{ borderColor: '#dd7323' }}>
                 <SelectValueText placeholder='Tất cả loại' />
               </SelectTrigger>
               <SelectContent>
@@ -393,11 +351,7 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
               size='md'
               w='190px'
             >
-              <SelectTrigger
-                borderColor='orange.200'
-                borderRadius='xl'
-                _hover={{ borderColor: '#dd7323' }}
-              >
+              <SelectTrigger borderColor='orange.200' borderRadius='xl' _hover={{ borderColor: '#dd7323' }}>
                 <SelectValueText placeholder='Tất cả trạng thái' />
               </SelectTrigger>
               <SelectContent>
@@ -414,13 +368,20 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
 
       {/* Table */}
       {filteredAssignments.length === 0 ? (
-        <EmptyState 
-          icon={FileText} 
-          title='Không tìm thấy bài tập' 
-          description={assignments.length === 0 ? 'Tạo bài tập mới để bắt đầu' : 'Thử thay đổi bộ lọc'} 
+        <EmptyState
+          icon={FileText}
+          title='Không tìm thấy bài tập'
+          description={assignments.length === 0 ? 'Tạo bài tập mới để bắt đầu' : 'Thử thay đổi bộ lọc'}
         />
       ) : (
-        <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.200' shadow='sm' overflow='hidden'>
+        <Card.Root
+          bg='white'
+          borderRadius='xl'
+          border='1px solid'
+          borderColor='orange.200'
+          shadow='sm'
+          overflow='hidden'
+        >
           <Table.Root size='sm'>
             <Table.Header>
               {table.getHeaderGroups().map((headerGroup) => (

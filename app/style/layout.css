@@ -22,6 +22,10 @@ body {
 /* Override background for admin layout */
 body:has(.admin-layout) {
   background: #f1f5f9 !important;
+}
+
+/* Admin layout specific overflow control */
+.admin-layout {
   overflow: hidden;
 }
 

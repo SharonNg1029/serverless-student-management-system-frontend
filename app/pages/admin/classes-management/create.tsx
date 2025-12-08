@@ -14,6 +14,7 @@ interface LecturerDTO {
 // Subject interface from API
 interface SubjectDTO {
   id: string
+  displayId?: string
   name: string
   status?: number
 }
@@ -64,6 +65,8 @@ const CreateClass: React.FC = () => {
           .filter((s: any) => s.status === 1 || s.status === undefined)
           .map((s: any) => ({
             id: s.id,
+            // Remove SUBJECT# prefix for display, keep original id for value
+            displayId: s.id?.replace('SUBJECT#', '') || s.id,
             name: s.name,
             status: s.status
           }))
@@ -233,7 +236,7 @@ const CreateClass: React.FC = () => {
                 <option value=''>-- Chọn học phần --</option>
                 {subjects.map((subject) => (
                   <option key={subject.id} value={subject.id}>
-                    {subject.id} - {subject.name}
+                    {subject.displayId || subject.id} - {subject.name}
                   </option>
                 ))}
               </select>

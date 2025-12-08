@@ -2,17 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router'
-import {
-  Box,
-  Text,
-  VStack,
-  HStack,
-  Spinner,
-  Badge,
-  Card,
-  Table,
-  Button
-} from '@chakra-ui/react'
+import { Box, Text, VStack, HStack, Spinner, Badge, Card, Table, Button } from '@chakra-ui/react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -28,9 +18,9 @@ import SubmissionModal from './SubmissionModal'
 import api from '../../utils/axios'
 
 // ============================================
-// MOCK DATA - Set to true to use mock data
+// MOCK DATA - Set to false to use real API
 // ============================================
-const USE_MOCK_DATA = true
+const USE_MOCK_DATA = false
 
 const MOCK_ASSIGNMENTS: Assignment[] = [
   {
@@ -110,7 +100,7 @@ interface Assignment {
 }
 
 interface AssignmentTabProps {
-  classId: number
+  classId: string | number
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -132,7 +122,7 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading, setLoading] = useState(true)
   const [sorting, setSorting] = useState<SortingState>([])
-  
+
   // Modal state
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -149,10 +139,17 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
     }
 
     try {
-      const response = await api.get<{ data: Assignment[] }>(`/api/student/classes/${classId}/assignments`)
-      setAssignments(response.data.data || [])
+      // API: GET /api/student/assignments?classId=xxx
+      const response = await api.get('/api/student/assignments', {
+        params: { classId }
+      })
+      console.log('Assignments response:', response.data)
+      // Handle different response formats
+      const data = response.data?.results || response.data?.data || response.data || []
+      setAssignments(Array.isArray(data) ? data : [])
     } catch (err) {
       console.error('Failed to fetch assignments:', err)
+      setAssignments([])
     } finally {
       setLoading(false)
     }
@@ -181,9 +178,7 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
   const handleSubmitSuccess = () => {
     // Update local state to mark as submitted
     if (selectedAssignment) {
-      setAssignments((prev) =>
-        prev.map((a) => (a.id === selectedAssignment.id ? { ...a, is_submitted: true } : a))
-      )
+      setAssignments((prev) => prev.map((a) => (a.id === selectedAssignment.id ? { ...a, is_submitted: true } : a)))
     }
   }
 
@@ -277,7 +272,7 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
         cell: ({ row }) => {
           const assignment = row.original
           const overdue = isOverdue(assignment.deadline)
-          
+
           // Only show submit button if not submitted
           if (assignment.is_submitted) {
             return (
@@ -288,7 +283,7 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
               </Box>
             )
           }
-          
+
           return (
             <Box display='flex' justifyContent='center' w='full'>
               <Button
@@ -302,7 +297,9 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
                 px={3}
               >
                 <Upload size={12} />
-                <Text ml={1} fontSize='xs'>Nộp</Text>
+                <Text ml={1} fontSize='xs'>
+                  Nộp
+                </Text>
               </Button>
             </Box>
           )
@@ -353,9 +350,20 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
 
         {/* Table */}
         {assignments.length === 0 ? (
-          <EmptyState icon={FileText} title='Chưa có bài tập nào' description='Giảng viên chưa tạo bài tập cho lớp này' />
+          <EmptyState
+            icon={FileText}
+            title='Chưa có bài tập nào'
+            description='Giảng viên chưa tạo bài tập cho lớp này'
+          />
         ) : (
-          <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.200' shadow='sm' overflow='hidden'>
+          <Card.Root
+            bg='white'
+            borderRadius='xl'
+            border='1px solid'
+            borderColor='orange.200'
+            shadow='sm'
+            overflow='hidden'
+          >
             <Table.Root size='sm'>
               <Table.Header>
                 {table.getHeaderGroups().map((headerGroup) => (

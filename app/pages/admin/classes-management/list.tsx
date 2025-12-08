@@ -101,14 +101,16 @@ const ClassesList: React.FC = () => {
     fetchLecturers()
   }, [])
 
-  // Fetch classes from API
+  // Store all classes from API (before client-side filtering)
+  const [allClasses, setAllClasses] = useState<ClassDisplay[]>([])
+
+  // Fetch classes from API - chỉ filter theo keyword và status
   const fetchClasses = async () => {
     try {
       setLoading(true)
 
-      // Build query params (không có subject_id vì API không hỗ trợ)
+      // Build query params - CHỈ keyword và status (API không hỗ trợ teacher_id)
       const params: Record<string, string> = {}
-      if (teacherId) params.teacher_id = teacherId
       if (debouncedKeyword.trim()) params.keyword = debouncedKeyword.trim()
       if (status !== '') params.status = status
 
@@ -131,7 +133,7 @@ const ClassesList: React.FC = () => {
         description: dto.description || ''
       }))
 
-      setClasses(transformedClasses)
+      setAllClasses(transformedClasses)
     } catch (error: any) {
       console.error('Error fetching classes:', error)
       toaster.create({
@@ -139,16 +141,28 @@ const ClassesList: React.FC = () => {
         description: error.response?.data?.message || 'Không thể tải danh sách lớp học',
         type: 'error'
       })
-      setClasses([])
+      setAllClasses([])
     } finally {
       setLoading(false)
     }
   }
 
-  // Load data on mount and when filters change
+  // Load data on mount and when API filters change (keyword, status)
   useEffect(() => {
     fetchClasses()
-  }, [debouncedKeyword, teacherId, status])
+  }, [debouncedKeyword, status])
+
+  // Client-side filter by teacherId
+  useEffect(() => {
+    if (teacherId) {
+      // Filter classes by teacherId on client-side
+      const filtered = allClasses.filter((c) => c.teacherId === teacherId)
+      setClasses(filtered)
+    } else {
+      // No teacher filter - show all
+      setClasses(allClasses)
+    }
+  }, [teacherId, allClasses])
 
   // Handle clear filters
   const handleClearFilters = () => {

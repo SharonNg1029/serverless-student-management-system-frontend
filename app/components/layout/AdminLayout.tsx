@@ -11,10 +11,10 @@ import {
   MessageSquarePlus,
   ShieldAlert,
   ChevronLeft
-} from 'lucide-react';
-import { useAuthStore } from '../../store/authStore';
-import UserMenu from './UserMenu';
-import NotificationBell from '../notifications/NotificationBell';
+} from 'lucide-react'
+import { useAuthStore } from '../../store/authStore'
+import UserMenu from './UserMenu'
+import NotificationBell from '../notifications/NotificationBell'
 
 const SidebarItem: React.FC<{
   to: string
@@ -76,12 +76,14 @@ const AdminLayout: React.FC = () => {
         >
           {/* Logo & Text - Visible when Expanded */}
           <div className={`flex items-center gap-3 overflow-hidden ${isCollapsed ? 'hidden' : 'flex'}`}>
-            <div className="w-15 h-10 rounded-xl flex items-center justify-center shadow-lg shrink-0">
-              <img src="/Logo_AWS.png" alt="Logo" className="w-full h-full object-contain" />
+            <div className='w-15 h-10 rounded-xl flex items-center justify-center shadow-lg shrink-0'>
+              <img src='/Logo_AWS.png' alt='Logo' className='w-full h-full object-contain' />
             </div>
-            <div className="min-w-[140px]">
-              <h1 className="text-lg font-bold text-white leading-tight whitespace-nowrap">Uni LMS</h1>
-              <span className="text-xs text-slate-400 font-medium tracking-wide whitespace-nowrap">Admin Dashboard</span>
+            <div className='min-w-[140px]'>
+              <h1 className='text-lg font-bold text-white leading-tight whitespace-nowrap'>Uni LMS</h1>
+              <span className='text-xs text-slate-400 font-medium tracking-wide whitespace-nowrap'>
+                Admin Dashboard
+              </span>
             </div>
           </div>
 
@@ -90,10 +92,14 @@ const AdminLayout: React.FC = () => {
             // Collapsed: Show Logo as a button to Expand
             <button
               onClick={toggleSidebarDesktop}
-              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg hover:scale-105 transition-transform group"
-              title="Mở rộng"
+              className='w-10 h-10 rounded-xl flex items-center justify-center shadow-lg hover:scale-105 transition-transform group'
+              title='Mở rộng'
             >
-              <img src="/Logo_AWS.png" alt="Logo" className="w-full h-full object-contain group-hover:rotate-12 transition-transform" />
+              <img
+                src='/Logo_AWS.png'
+                alt='Logo'
+                className='w-full h-full object-contain group-hover:rotate-12 transition-transform'
+              />
             </button>
           ) : (
             // Expanded: Show Chevron to Collapse
@@ -116,9 +122,9 @@ const AdminLayout: React.FC = () => {
             )}
             <div className='space-y-1'>
               <SidebarItem
-                to='/admin/dashboard'
-                icon={<LayoutDashboard size={20} />}
-                label='Tổng quan'
+                to='/admin/settings'
+                icon={<Settings size={20} />}
+                label='Cấu hình'
                 isCollapsed={isCollapsed}
                 onClick={() => setIsSidebarOpen(false)}
               />
@@ -184,13 +190,6 @@ const AdminLayout: React.FC = () => {
                 isCollapsed={isCollapsed}
                 onClick={() => setIsSidebarOpen(false)}
               />
-              <SidebarItem
-                to='/admin/settings'
-                icon={<Settings size={20} />}
-                label='Cài đặt'
-                isCollapsed={isCollapsed}
-                onClick={() => setIsSidebarOpen(false)}
-              />
             </div>
           </div>
         </div>
@@ -209,9 +208,9 @@ const AdminLayout: React.FC = () => {
             </button>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className='flex items-center gap-4'>
             <NotificationBell />
-            <div className="pl-4 border-l border-slate-200">
+            <div className='pl-4 border-l border-slate-200'>
               <UserMenu />
             </div>
           </div>

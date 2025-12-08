@@ -49,9 +49,10 @@ const ASSIGNMENT_WEIGHTS: Record<AssignmentType, number> = {
 // ============================================
 
 export const lecturerClassApi = {
-  // List classes
-  getClasses: async (params?: { subject_id?: number; keyword?: string; status?: number }) => {
-    const response = await api.get<{ results: ClassDTO[] }>('/lecturer/classes', { params })
+  // List classes - GET /api/lecturer/classes
+  // Query params: keyword (tên lớp), status (0/1), semester (bỏ qua)
+  getClasses: async (params?: { keyword?: string; status?: number }) => {
+    const response = await api.get<{ results: ClassDTO[] }>('/api/lecturer/classes', { params })
     return response.data
   },
 
@@ -91,9 +92,10 @@ export const lecturerClassApi = {
 // ============================================
 
 export const lecturerStudentApi = {
-  // List students in class
-  getStudentsInClass: async (classId: number, params?: { keyword?: string; status?: string }) => {
-    const response = await api.get<{ results: StudentDTO[] }>(`/lecturer/students/${classId}`, { params })
+  // List students in class - GET /api/lecturer/students/{class_id}
+  getStudentsInClass: async (classId: string, params?: { keyword?: string; status?: string }) => {
+    const response = await api.get(`/api/lecturer/students/${classId}`, { params })
+    // BE trả về { data: [...], count, message, status }
     return response.data
   },
 
@@ -318,11 +320,12 @@ export const lecturerAssignmentApi = {
   },
 
   /**
-   * GET /lecturer/classes/{class_id}/assignments
+   * GET /api/lecturer/classes/{class_id}/assignments
    * Lấy list bài tập per class (từ assignments, include materials nếu có)
    */
-  getAssignments: async (classId: number, params?: { keyword?: string; type?: string }) => {
-    const response = await api.get<{ results: AssignmentDTO[] }>(`/lecturer/classes/${classId}/assignments`, { params })
+  getAssignments: async (classId: string, params?: { keyword?: string; type?: string }) => {
+    const response = await api.get(`/api/lecturer/classes/${classId}/assignments`, { params })
+    // BE trả về { data: [...], count, message, status }
     return response.data
   },
 
@@ -358,10 +361,9 @@ export const lecturerAssignmentApi = {
    * Lấy assignment_submissions của all học sinh (theo assignment_submissions)
    */
   getSubmissions: async (classId: number, assignmentId: number) => {
-    const response = await api.get<{ results: AssignmentSubmissionDTO[] }>(
-      '/lecturer/assignments/get-submissions',
-      { params: { class_id: classId, assignment_id: assignmentId } }
-    )
+    const response = await api.get<{ results: AssignmentSubmissionDTO[] }>('/lecturer/assignments/get-submissions', {
+      params: { class_id: classId, assignment_id: assignmentId }
+    })
     return response.data
   },
 
@@ -378,7 +380,10 @@ export const lecturerAssignmentApi = {
    * PUT /lecturer/assignments/{assignment_id}/update-grades
    * Cập nhật điểm cho sinh viên per assignment
    */
-  updateGrades: async (assignmentId: number, grades: Array<{ submission_id: number; score: number; feedback?: string }>) => {
+  updateGrades: async (
+    assignmentId: number,
+    grades: Array<{ submission_id: number; score: number; feedback?: string }>
+  ) => {
     const response = await api.put<{ results: AssignmentSubmissionDTO[] }>(
       `/lecturer/assignments/${assignmentId}/update-grades`,
       { grades }
@@ -415,10 +420,10 @@ export const lecturerAssignmentApi = {
 
 export const lecturerPostApi = {
   /**
-   * POST /classes/{class_id}/posts
+   * POST /api/lecturer/classes/{class_id}/posts
    * Tạo post gốc (chỉ dành cho GV)
    */
-  createPost: async (classId: number, data: CreatePostRequest) => {
+  createPost: async (classId: string, data: CreatePostRequest) => {
     const formData = new FormData()
     formData.append('title', data.title)
     formData.append('content', data.content)
@@ -428,18 +433,19 @@ export const lecturerPostApi = {
       formData.append('attachment', data.attachment)
     }
 
-    const response = await api.post<PostDTO>(`/classes/${classId}/posts`, formData, {
+    const response = await api.post<PostDTO>(`/api/lecturer/classes/${classId}/posts`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
     return response.data
   },
 
   /**
-   * GET /classes/{class_id}/posts
+   * GET /api/lecturer/classes/{class_id}/posts
    * Lấy danh sách posts của một lớp
    */
-  getPosts: async (classId: number, params?: { keyword?: string }) => {
-    const response = await api.get<{ results: PostDTO[] }>(`/classes/${classId}/posts`, { params })
+  getPosts: async (classId: string, params?: { keyword?: string }) => {
+    const response = await api.get(`/api/lecturer/classes/${classId}/posts`, { params })
+    // BE trả về { data: [...], count, message, status }
     return response.data
   },
 
@@ -507,9 +513,7 @@ export const lecturerPostApi = {
 
   // Like/unlike post
   toggleLike: async (classId: number, postId: number) => {
-    const response = await api.post<{ message: string; like_count: number }>(
-      `/classes/${classId}/posts/${postId}/like`
-    )
+    const response = await api.post<{ message: string; like_count: number }>(`/classes/${classId}/posts/${postId}/like`)
     return response.data
   },
 

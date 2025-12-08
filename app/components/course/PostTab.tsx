@@ -22,9 +22,9 @@ import EmptyState from '../ui/EmptyState'
 import api from '../../utils/axios'
 
 // ============================================
-// MOCK DATA - Set to true to use mock data
+// MOCK DATA - Set to false to use real API
 // ============================================
-const USE_MOCK_DATA = true
+const USE_MOCK_DATA = false
 
 const MOCK_POSTS: Post[] = [
   {
@@ -160,7 +160,7 @@ interface Comment {
 }
 
 interface PostTabProps {
-  classId: number
+  classId: string | number
 }
 
 // Format relative time
@@ -177,7 +177,9 @@ function getRelativeTime(dateStr: string): string {
   if (diffHours < 24) return `${diffHours} giờ trước`
   if (diffDays === 1) return 'Hôm qua'
   if (diffDays < 7) return `${diffDays} ngày trước`
-  return date.toLocaleDateString('vi-VN') + ' · ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  return (
+    date.toLocaleDateString('vi-VN') + ' · ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  )
 }
 
 export default function PostTab({ classId }: PostTabProps) {
@@ -196,10 +198,15 @@ export default function PostTab({ classId }: PostTabProps) {
     }
 
     try {
-      const response = await api.get<{ data: Post[] }>(`/api/student/classes/${classId}/posts`)
-      setPosts(response.data.data || [])
+      // API: GET /api/student/classes/{class_id}/posts
+      const response = await api.get(`/api/student/classes/${classId}/posts`)
+      console.log('Posts response:', response.data)
+      // Handle different response formats
+      const data = response.data?.results || response.data?.data || response.data || []
+      setPosts(Array.isArray(data) ? data : [])
     } catch (err) {
       console.error('Failed to fetch posts:', err)
+      setPosts([])
     } finally {
       setLoading(false)
     }
@@ -230,9 +237,7 @@ export default function PostTab({ classId }: PostTabProps) {
       await api.post(`/api/student/posts/${postId}/like`, { action: isLiked ? 'unlike' : 'like' })
       setPosts((prev) =>
         prev.map((p) =>
-          p.id === postId
-            ? { ...p, is_liked: !isLiked, like_count: isLiked ? p.like_count - 1 : p.like_count + 1 }
-            : p
+          p.id === postId ? { ...p, is_liked: !isLiked, like_count: isLiked ? p.like_count - 1 : p.like_count + 1 } : p
         )
       )
     } catch (err) {
@@ -263,7 +268,11 @@ export default function PostTab({ classId }: PostTabProps) {
 
       {/* Posts Feed */}
       {sortedPosts.length === 0 ? (
-        <EmptyState icon={MessageSquare} title='Chưa có bài đăng nào' description='Giảng viên chưa đăng bài thảo luận' />
+        <EmptyState
+          icon={MessageSquare}
+          title='Chưa có bài đăng nào'
+          description='Giảng viên chưa đăng bài thảo luận'
+        />
       ) : (
         <VStack gap={4} align='stretch'>
           {sortedPosts.map((post) => (
@@ -278,7 +287,7 @@ export default function PostTab({ classId }: PostTabProps) {
 // Post Card Component
 interface PostCardProps {
   post: Post
-  classId: number
+  classId: string | number
   onLike: (postId: number, isLiked: boolean) => void
 }
 
@@ -432,7 +441,9 @@ function PostCard({ post, classId, onLike }: PostCardProps) {
               {loadingComments ? (
                 <HStack justify='center' py={4}>
                   <Spinner size='sm' color='#dd7323' />
-                  <Text fontSize='sm' color='gray.500'>Đang tải bình luận...</Text>
+                  <Text fontSize='sm' color='gray.500'>
+                    Đang tải bình luận...
+                  </Text>
                 </HStack>
               ) : (
                 <>

@@ -20,9 +20,6 @@ import { useAuthStore } from '../../../store/authStore'
 import { profileApi } from '../../../services/lecturerApi'
 import { toaster } from '../../../components/ui/toaster'
 import type { ProfileDTO } from '../../../types'
-import StudentInfo from './studentInfo'
-import LecturerInfo from './lecturerInfo'
-import AdminInfo from './adminInfo'
 
 export default function ProfileRoute() {
   const navigate = useNavigate()
@@ -216,7 +213,9 @@ export default function ProfileRoute() {
   }
 
   const getRoleName = (role?: string | null) => {
-    switch (role) {
+    // Use provided role or fallback to user role from auth store
+    const effectiveRole = role || user?.role
+    switch (effectiveRole) {
       case 'Admin':
         return 'Quản trị viên'
       case 'Lecturer':
@@ -224,10 +223,6 @@ export default function ProfileRoute() {
       case 'Student':
         return 'Sinh viên'
       default:
-        // Fallback to user role from auth store if API returns null
-        if (user?.role) {
-          return getRoleName(user.role)
-        }
         return 'Người dùng'
     }
   }
@@ -304,15 +299,17 @@ export default function ProfileRoute() {
 
             {/* Quick Info */}
             <div className='mt-6 space-y-3 pt-6 border-t border-slate-100'>
-              <div className='flex items-center gap-3 text-sm'>
-                <div className='p-2 bg-slate-50 rounded-lg'>
-                  <Hash size={16} className='text-slate-400' />
+              {profile?.codeUser && (
+                <div className='flex items-center gap-3 text-sm'>
+                  <div className='p-2 bg-slate-50 rounded-lg'>
+                    <Hash size={16} className='text-slate-400' />
+                  </div>
+                  <div>
+                    <p className='text-slate-400 text-xs'>Mã định danh</p>
+                    <p className='font-semibold text-slate-700'>{profile.codeUser}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className='text-slate-400 text-xs'>Mã định danh</p>
-                  <p className='font-semibold text-slate-700'>{profile?.codeUser || 'N/A'}</p>
-                </div>
-              </div>
+              )}
 
               <div className='flex items-center gap-3 text-sm'>
                 <div className='p-2 bg-slate-50 rounded-lg'>
@@ -538,11 +535,6 @@ export default function ProfileRoute() {
               )}
             </div>
           </div>
-
-          {/* Role-specific info */}
-          {user?.role === 'Student' && <StudentInfo />}
-          {user?.role === 'Lecturer' && <LecturerInfo />}
-          {user?.role === 'Admin' && <AdminInfo />}
         </div>
       </div>
     </div>

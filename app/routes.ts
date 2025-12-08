@@ -43,8 +43,12 @@ export default [
         // Lecturer routes - My Courses and Class Detail
         route('lecturer', './pages/lecturer/index.tsx'),
         route('lecturer/my-courses', './pages/lecturer/my-courses.tsx'),
+        route('lecturer/notifications-send', './pages/lecturer/notifications-send.tsx'),
         route('lecturer/classes/:classId', './pages/lecturer/classes/[classId]/index.tsx'),
-        route('lecturer/classes/:classId/assignments/:assignmentId', './pages/lecturer/classes/[classId]/assignment-detail.tsx'),
+        route(
+          'lecturer/classes/:classId/assignments/:assignmentId',
+          './pages/lecturer/classes/[classId]/assignment-detail.tsx'
+        ),
 
         // Student routes
         route('student/my-courses', './pages/student/my-courses.tsx'),
@@ -52,6 +56,7 @@ export default [
         route('student/calendar', './pages/student/calendar.tsx'),
         route('student/ranking', './pages/student/ranking.tsx'),
         route('student/notifications-receive', './pages/student/notifications-receive.tsx'),
+        route('student/search', './pages/student/search-results.tsx'),
         route('student/course-details/:classId', './pages/student/course-details.tsx'),
         route('student/course-details/:classId/assignment/:assignmentId', './pages/student/assignment-detail.tsx')
       ])

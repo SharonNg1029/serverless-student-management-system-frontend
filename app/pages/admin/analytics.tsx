@@ -1,496 +1,465 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  LineChart, Line, AreaChart, Area, PieChart, Pie, Cell, Legend
-} from 'recharts';
-import { Download, Calendar, Filter, Trophy, TrendingUp, Award, Search, Loader2, BookOpen } from 'lucide-react';
-import { createListCollection, Button, Flex } from '@chakra-ui/react';
-import api from '../../utils/axios';
-import { toaster } from '../../components/ui/toaster';
+import React, { useEffect, useState } from 'react'
 import {
-  ComboboxRoot,
-  ComboboxLabel,
-  ComboboxInput,
-  ComboboxTrigger,
-  ComboboxContent,
-  ComboboxItem,
-  ComboboxItemText,
-  ComboboxControl,
-  ComboboxClearTrigger
-} from '../../components/ui/combobox';
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Legend
+} from 'recharts'
+import {
+  Users,
+  BookOpen,
+  GraduationCap,
+  Loader2,
+  RefreshCw,
+  UserCheck,
+  UserX,
+  CheckCircle,
+  XCircle
+} from 'lucide-react'
+import api from '../../utils/axios'
+import { toaster } from '../../components/ui/toaster'
 
-// --- Data ---
-const ENROLLMENT_DATA = [
-  { month: 'T1', students: 1200, online: 800 },
-  { month: 'T2', students: 1350, online: 950 },
-  { month: 'T3', students: 1400, online: 1100 },
-  { month: 'T4', students: 1380, online: 1050 },
-  { month: 'T5', students: 1500, online: 1250 },
-  { month: 'T6', students: 1650, online: 1400 },
-];
-
-const GRADE_DISTRIBUTION = [
-  { name: 'A (8.5-10)', value: 15, color: '#10b981' }, // Emerald
-  { name: 'B (7.0-8.4)', value: 35, color: '#3b82f6' }, // Blue
-  { name: 'C (5.5-6.9)', value: 30, color: '#dd7323' }, // Orange (Brand)
-  { name: 'D (4.0-5.4)', value: 15, color: '#f59e0b' }, // Amber
-  { name: 'F (<4.0)', value: 5, color: '#ef4444' },    // Red
-];
-
-const SYSTEM_LOAD = [
-  { time: '08:00', load: 45 },
-  { time: '10:00', load: 80 },
-  { time: '12:00', load: 30 },
-  { time: '14:00', load: 75 },
-  { time: '16:00', load: 60 },
-  { time: '18:00', load: 20 },
-];
-
-// RankingDTO from backend
-interface RankingDTO {
-  student_id: number;
-  rank: number;
-  score: number;
-  recommendations: string;
-  student_name?: string;
-  student_email?: string;
+interface StatsData {
+  totalUsers: number
+  totalStudents: number
+  totalLecturers: number
+  totalAdmins: number
+  activeUsers: number
+  inactiveUsers: number
+  totalClasses: number
+  activeClasses: number
+  inactiveClasses: number
+  totalSubjects: number
+  activeSubjects: number
+  inactiveSubjects: number
 }
 
-interface ClassInfo {
-  id: number;
-  name: string;
-  subject_name?: string;
+interface SubjectClassCount {
+  name: string
+  count: number
+}
+
+const COLORS = {
+  student: '#3b82f6',
+  lecturer: '#8b5cf6',
+  admin: '#ef4444',
+  active: '#10b981',
+  inactive: '#6b7280',
+  orange: '#dd7323',
+  green: '#22c55e'
 }
 
 const AnalyticsPage: React.FC = () => {
-  // Ranking states
-  const [rankingData, setRankingData] = useState<RankingDTO[]>([]);
-  const [classes, setClasses] = useState<ClassInfo[]>([]);
-  const [selectedClassId, setSelectedClassId] = useState<string>('');
-  const [loadingRanking, setLoadingRanking] = useState(false);
-  const [loadingClasses, setLoadingClasses] = useState(false);
+  const [stats, setStats] = useState<StatsData>({
+    totalUsers: 0,
+    totalStudents: 0,
+    totalLecturers: 0,
+    totalAdmins: 0,
+    activeUsers: 0,
+    inactiveUsers: 0,
+    totalClasses: 0,
+    activeClasses: 0,
+    inactiveClasses: 0,
+    totalSubjects: 0,
+    activeSubjects: 0,
+    inactiveSubjects: 0
+  })
+  const [subjectClassCounts, setSubjectClassCounts] = useState<SubjectClassCount[]>([])
+  const [loading, setLoading] = useState(true)
 
-  // Create collection for Combobox
-  const classCollection = useMemo(() => {
-    return createListCollection({
-      items: classes.map(cls => ({
-        label: `${cls.name}${cls.subject_name ? ` (${cls.subject_name})` : ''}`,
-        value: cls.id.toString()
-      }))
-    });
-  }, [classes]);
-
-  // Fetch classes for dropdown
-  useEffect(() => {
-    const fetchClasses = async () => {
-      try {
-        setLoadingClasses(true);
-        const response = await api.get<{ results: any[] }>('/admin/classes', {
-          params: { status: 1 } // Only active classes
-        });
-        
-        const classesData: ClassInfo[] = response.data.results.map(c => ({
-          id: c.id,
-          name: c.name,
-          subject_name: c.subject_name
-        }));
-        
-        setClasses(classesData);
-      } catch (error: any) {
-        console.error('Error fetching classes:', error);
-        toaster.create({
-          title: 'Lỗi',
-          description: 'Không thể tải danh sách lớp học',
-          type: 'error'
-        });
-      } finally {
-        setLoadingClasses(false);
-      }
-    };
-
-    fetchClasses();
-  }, []);
-
-  // Fetch ranking data when class selected
-  const fetchRanking = async () => {
-    if (!selectedClassId) {
-      toaster.create({
-        title: 'Thiếu thông tin',
-        description: 'Vui lòng chọn lớp học để xem ranking',
-        type: 'warning'
-      });
-      return;
-    }
-
+  const fetchStats = async () => {
     try {
-      setLoadingRanking(true);
-      const response = await api.get<RankingDTO[]>('/admin/ranking', {
-        params: { class_id: selectedClassId }
-      });
-      
-      setRankingData(response.data);
-      
-      if (response.data.length === 0) {
-        toaster.create({
-          title: 'Thông báo',
-          description: 'Chưa có dữ liệu điểm cho lớp này',
-          type: 'info'
-        });
-      }
+      setLoading(true)
+
+      // Fetch all data in parallel
+      const [usersRes, classesRes, subjectsRes] = await Promise.all([
+        api.get('/api/admin/users'),
+        api.get('/api/admin/classes'),
+        api.get('/api/admin/subjects')
+      ])
+
+      // Parse users data
+      const users = usersRes.data?.data || usersRes.data?.results || []
+      const students = users.filter((u: any) => u.role === 'Student' || u.role_id === 3)
+      const lecturers = users.filter((u: any) => u.role === 'Lecturer' || u.role_id === 2)
+      const admins = users.filter((u: any) => u.role === 'Admin' || u.role_id === 1)
+      const activeUsers = users.filter((u: any) => u.status === 1)
+      const inactiveUsers = users.filter((u: any) => u.status === 0)
+
+      // Parse classes data
+      const classes = classesRes.data?.data || classesRes.data?.results || []
+      const activeClasses = classes.filter((c: any) => c.status === 1)
+      const inactiveClasses = classes.filter((c: any) => c.status === 0)
+
+      // Parse subjects data
+      const subjects = subjectsRes.data?.data || subjectsRes.data?.results || []
+      const activeSubjects = subjects.filter((s: any) => s.status === 1)
+      const inactiveSubjects = subjects.filter((s: any) => s.status === 0)
+
+      // Count classes per subject
+      const subjectMap = new Map<string, { name: string; count: number }>()
+      subjects.forEach((s: any) => {
+        const subjectId = s.id || s.codeSubject
+        subjectMap.set(subjectId, { name: s.name || subjectId, count: 0 })
+      })
+      classes.forEach((c: any) => {
+        const subjectId = c.subjectId || c.subject_id
+        if (subjectMap.has(subjectId)) {
+          const current = subjectMap.get(subjectId)!
+          subjectMap.set(subjectId, { ...current, count: current.count + 1 })
+        }
+      })
+      // Get top 6 subjects by class count
+      const sortedSubjects = Array.from(subjectMap.values())
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 6)
+      setSubjectClassCounts(sortedSubjects)
+
+      setStats({
+        totalUsers: users.length,
+        totalStudents: students.length,
+        totalLecturers: lecturers.length,
+        totalAdmins: admins.length,
+        activeUsers: activeUsers.length,
+        inactiveUsers: inactiveUsers.length,
+        totalClasses: classes.length,
+        activeClasses: activeClasses.length,
+        inactiveClasses: inactiveClasses.length,
+        totalSubjects: subjects.length,
+        activeSubjects: activeSubjects.length,
+        inactiveSubjects: inactiveSubjects.length
+      })
     } catch (error: any) {
-      console.error('Error fetching ranking:', error);
+      console.error('Error fetching stats:', error)
       toaster.create({
         title: 'Lỗi',
-        description: error.response?.data?.message || 'Không thể tải ranking',
+        description: 'Không thể tải dữ liệu thống kê',
         type: 'error'
-      });
-      setRankingData([]);
+      })
     } finally {
-      setLoadingRanking(false);
+      setLoading(false)
     }
-  };
+  }
 
-  // Auto-fetch ranking when class changes
   useEffect(() => {
-    if (selectedClassId) {
-      fetchRanking();
-    } else {
-      setRankingData([]);
+    fetchStats()
+  }, [])
+
+  // Prepare chart data
+  const userRoleData = [
+    { name: 'Sinh viên', value: stats.totalStudents, color: COLORS.student },
+    { name: 'Giảng viên', value: stats.totalLecturers, color: COLORS.lecturer },
+    { name: 'Admin', value: stats.totalAdmins, color: COLORS.admin }
+  ].filter((d) => d.value > 0)
+
+  const statusComparisonData = [
+    {
+      name: 'Người dùng',
+      active: stats.activeUsers,
+      inactive: stats.inactiveUsers
+    },
+    {
+      name: 'Lớp học',
+      active: stats.activeClasses,
+      inactive: stats.inactiveClasses
+    },
+    {
+      name: 'Môn học',
+      active: stats.activeSubjects,
+      inactive: stats.inactiveSubjects
     }
-  }, [selectedClassId]);
+  ]
 
-  // Get medal icon for top 3
-  const getMedalIcon = (rank: number) => {
-    if (rank === 1) return <Trophy className="text-yellow-500" size={20} />;
-    if (rank === 2) return <Trophy className="text-gray-400" size={20} />;
-    if (rank === 3) return <Trophy className="text-amber-600" size={20} />;
-    return null;
-  };
+  const classStatusData = [
+    { name: 'Hoạt động', value: stats.activeClasses, color: COLORS.active },
+    { name: 'Đã đóng', value: stats.inactiveClasses, color: COLORS.inactive }
+  ].filter((d) => d.value > 0)
 
-  // Get score color
-  const getScoreColor = (score: number) => {
-    if (score >= 8.5) return 'text-green-600 bg-green-50';
-    if (score >= 7.0) return 'text-blue-600 bg-blue-50';
-    if (score >= 5.5) return 'text-orange-600 bg-orange-50';
-    if (score >= 4.0) return 'text-amber-600 bg-amber-50';
-    return 'text-red-600 bg-red-50';
-  };
+  if (loading) {
+    return (
+      <div className='min-h-[60vh] flex items-center justify-center'>
+        <div className='text-center'>
+          <Loader2 size={40} className='text-[#dd7323] animate-spin mx-auto mb-3' />
+          <p className='text-slate-600'>Đang tải dữ liệu thống kê...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-10">
+    <div className='max-w-7xl mx-auto space-y-8 pb-10'>
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className='flex flex-col md:flex-row md:items-center justify-between gap-4'>
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Thống kê & Báo cáo</h1>
-          <p className="text-slate-500 mt-1">Phân tích dữ liệu học tập và hoạt động hệ thống.</p>
+          <h1 className='text-2xl font-bold text-slate-800'>Thống kê & Báo cáo</h1>
+          <p className='text-slate-500 mt-1'>Tổng quan dữ liệu hệ thống quản lý sinh viên.</p>
         </div>
-        <div className="flex items-center gap-3">
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 font-medium transition-colors shadow-sm text-sm">
-            <Calendar size={16} />
-            <span>Học kỳ I (2024-2025)</span>
-          </button>
-          <button className="flex items-center gap-2 px-4 py-2 bg-[#dd7323] text-white rounded-xl hover:bg-[#c2621a] font-medium transition-all shadow-lg shadow-orange-200 text-sm">
-            <Download size={16} />
-            <span>Xuất Báo cáo PDF</span>
-          </button>
+        <button
+          onClick={fetchStats}
+          className='flex items-center gap-2 px-4 py-2 bg-[#dd7323] text-white rounded-xl hover:bg-[#c2621a] font-medium transition-all shadow-lg shadow-orange-200 text-sm'
+        >
+          <RefreshCw size={16} />
+          <span>Làm mới</span>
+        </button>
+      </div>
+
+      {/* Summary Cards */}
+      <div className='grid grid-cols-1 md:grid-cols-3 gap-6'>
+        <div className='bg-gradient-to-br from-blue-500 to-blue-600 p-6 rounded-2xl text-white'>
+          <div className='flex items-center justify-between'>
+            <div>
+              <p className='text-blue-100 text-sm font-medium'>Tổng người dùng</p>
+              <p className='text-4xl font-bold mt-2'>{stats.totalUsers}</p>
+            </div>
+            <div className='p-4 bg-white/20 rounded-xl'>
+              <Users size={32} />
+            </div>
+          </div>
+          <div className='mt-4 pt-4 border-t border-white/20'>
+            <p className='text-sm text-blue-100'>
+              {stats.totalStudents} SV • {stats.totalLecturers} GV • {stats.totalAdmins} Admin
+            </p>
+          </div>
+        </div>
+
+        <div className='bg-gradient-to-br from-[#dd7323] to-orange-600 p-6 rounded-2xl text-white'>
+          <div className='flex items-center justify-between'>
+            <div>
+              <p className='text-orange-100 text-sm font-medium'>Tổng lớp học</p>
+              <p className='text-4xl font-bold mt-2'>{stats.totalClasses}</p>
+            </div>
+            <div className='p-4 bg-white/20 rounded-xl'>
+              <GraduationCap size={32} />
+            </div>
+          </div>
+          <div className='mt-4 pt-4 border-t border-white/20'>
+            <p className='text-sm text-orange-100'>
+              {stats.activeClasses} đang hoạt động • {stats.inactiveClasses} đã đóng
+            </p>
+          </div>
+        </div>
+
+        <div className='bg-gradient-to-br from-green-500 to-green-600 p-6 rounded-2xl text-white'>
+          <div className='flex items-center justify-between'>
+            <div>
+              <p className='text-green-100 text-sm font-medium'>Tổng môn học</p>
+              <p className='text-4xl font-bold mt-2'>{stats.totalSubjects}</p>
+            </div>
+            <div className='p-4 bg-white/20 rounded-xl'>
+              <BookOpen size={32} />
+            </div>
+          </div>
+          <div className='mt-4 pt-4 border-t border-white/20'>
+            <p className='text-sm text-green-100'>
+              {stats.activeSubjects} đang hoạt động • {stats.inactiveSubjects} đã ẩn
+            </p>
+          </div>
         </div>
       </div>
 
-      {/* Ranking Section - New Feature */}
-      <div className="bg-gradient-to-br from-orange-50 to-white rounded-2xl shadow-sm border border-orange-100 p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="bg-[#dd7323] p-2 rounded-lg">
-            <Trophy size={24} className="text-white" />
+      {/* Charts Row 1 */}
+      <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
+        {/* User Role Distribution - Pie Chart */}
+        <div className='bg-white rounded-2xl shadow-sm border border-slate-200 p-6'>
+          <div className='flex items-center gap-3 mb-6'>
+            <div className='p-2 bg-blue-50 rounded-lg'>
+              <Users size={20} className='text-blue-600' />
+            </div>
+            <div>
+              <h3 className='text-lg font-bold text-slate-800'>Phân bố người dùng theo vai trò</h3>
+              <p className='text-sm text-slate-500'>Tỷ lệ sinh viên, giảng viên, admin</p>
+            </div>
+          </div>
+          <div className='h-72'>
+            {userRoleData.length > 0 ? (
+              <ResponsiveContainer width='100%' height='100%'>
+                <PieChart>
+                  <Pie
+                    data={userRoleData}
+                    cx='50%'
+                    cy='50%'
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey='value'
+                    label={({ name, percent }) => `${name}: ${((percent || 0) * 100).toFixed(0)}%`}
+                  >
+                    {userRoleData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number) => [`${value} người`, 'Số lượng']}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className='h-full flex items-center justify-center text-slate-400'>Chưa có dữ liệu</div>
+            )}
+          </div>
+        </div>
+
+        {/* Status Comparison - Bar Chart */}
+        <div className='bg-white rounded-2xl shadow-sm border border-slate-200 p-6'>
+          <div className='flex items-center gap-3 mb-6'>
+            <div className='p-2 bg-emerald-50 rounded-lg'>
+              <CheckCircle size={20} className='text-emerald-600' />
+            </div>
+            <div>
+              <h3 className='text-lg font-bold text-slate-800'>So sánh trạng thái</h3>
+              <p className='text-sm text-slate-500'>Hoạt động vs Không hoạt động</p>
+            </div>
+          </div>
+          <div className='h-72'>
+            <ResponsiveContainer width='100%' height='100%'>
+              <BarChart data={statusComparisonData} layout='vertical'>
+                <CartesianGrid strokeDasharray='3 3' horizontal={true} vertical={false} />
+                <XAxis type='number' />
+                <YAxis dataKey='name' type='category' width={80} tick={{ fontSize: 12 }} />
+                <Tooltip
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                />
+                <Legend />
+                <Bar dataKey='active' name='Hoạt động' fill={COLORS.active} radius={[0, 4, 4, 0]} />
+                <Bar dataKey='inactive' name='Không hoạt động' fill={COLORS.inactive} radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Charts Row 2 */}
+      <div className='grid grid-cols-1 lg:grid-cols-2 gap-6'>
+        {/* Class Status - Pie Chart */}
+        <div className='bg-white rounded-2xl shadow-sm border border-slate-200 p-6'>
+          <div className='flex items-center gap-3 mb-6'>
+            <div className='p-2 bg-orange-50 rounded-lg'>
+              <GraduationCap size={20} className='text-[#dd7323]' />
+            </div>
+            <div>
+              <h3 className='text-lg font-bold text-slate-800'>Trạng thái lớp học</h3>
+              <p className='text-sm text-slate-500'>Tỷ lệ lớp đang hoạt động và đã đóng</p>
+            </div>
+          </div>
+          <div className='h-72'>
+            {classStatusData.length > 0 ? (
+              <ResponsiveContainer width='100%' height='100%'>
+                <PieChart>
+                  <Pie
+                    data={classStatusData}
+                    cx='50%'
+                    cy='50%'
+                    innerRadius={60}
+                    outerRadius={100}
+                    paddingAngle={5}
+                    dataKey='value'
+                    label={({ name, value }) => `${name}: ${value}`}
+                  >
+                    {classStatusData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number) => [`${value} lớp`, 'Số lượng']}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className='h-full flex items-center justify-center text-slate-400'>Chưa có dữ liệu</div>
+            )}
+          </div>
+        </div>
+
+        {/* Classes per Subject - Bar Chart */}
+        <div className='bg-white rounded-2xl shadow-sm border border-slate-200 p-6'>
+          <div className='flex items-center gap-3 mb-6'>
+            <div className='p-2 bg-green-50 rounded-lg'>
+              <BookOpen size={20} className='text-green-600' />
+            </div>
+            <div>
+              <h3 className='text-lg font-bold text-slate-800'>Số lớp theo môn học</h3>
+              <p className='text-sm text-slate-500'>Top môn học có nhiều lớp nhất</p>
+            </div>
+          </div>
+          <div className='h-72'>
+            {subjectClassCounts.length > 0 ? (
+              <ResponsiveContainer width='100%' height='100%'>
+                <BarChart data={subjectClassCounts}>
+                  <CartesianGrid strokeDasharray='3 3' vertical={false} />
+                  <XAxis dataKey='name' tick={{ fontSize: 11 }} angle={-20} textAnchor='end' height={60} />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip
+                    formatter={(value: number) => [`${value} lớp`, 'Số lớp']}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  />
+                  <Bar dataKey='count' name='Số lớp' fill={COLORS.orange} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className='h-full flex items-center justify-center text-slate-400'>Chưa có dữ liệu</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Detailed Stats */}
+      <div className='bg-white rounded-2xl shadow-sm border border-slate-200 p-6'>
+        <div className='flex items-center gap-3 mb-6'>
+          <div className='p-2 bg-slate-100 rounded-lg'>
+            <Users size={20} className='text-slate-600' />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-slate-800">Xếp hạng theo Lớp</h2>
-            <p className="text-sm text-slate-600">Xem ranking và gợi ý cải thiện cho học sinh trong lớp</p>
+            <h3 className='text-lg font-bold text-slate-800'>Chi tiết người dùng</h3>
+            <p className='text-sm text-slate-500'>Thống kê chi tiết theo vai trò và trạng thái</p>
           </div>
         </div>
 
-        {/* Class Selector */}
-        <div className="mb-4">
-          <label className="block text-sm font-medium text-slate-700 mb-2">
-            <BookOpen size={14} className="inline mr-1" />
-            Chọn lớp học (bắt buộc)
-          </label>
-
-          <Flex gap={0} w="full" >
-            <ComboboxRoot
-              collection={classCollection}
-              value={selectedClassId ? [selectedClassId] : []}
-              onValueChange={(details: any) => {
-                const newValue = details.value[0] || '';
-                setSelectedClassId(newValue);
-              }}
-              disabled={loadingClasses}
-              width="full"
-            >
-              <ComboboxControl>
-                <ComboboxInput 
-                  placeholder="Tìm kiếm lớp học..."
-                  h="48px"
-                  w="full"
-                  borderLeftRadius="md"
-                  borderRightRadius="0"
-                  borderColor="slate.300"
-                  _hover={{ borderColor: 'slate.400' }}
-                  _focus={{ borderColor: '#dd7323', boxShadow: '0 0 0 1px #dd7323' }}
-                />
-                <ComboboxTrigger />
-                <ComboboxClearTrigger />
-              </ComboboxControl>
-
-              <ComboboxContent>
-                {classCollection.items.map((item) => (
-                  <ComboboxItem key={item.value} item={item}>
-                    <ComboboxItemText>{item.label}</ComboboxItemText>
-                  </ComboboxItem>
-                ))}
-              </ComboboxContent>
-            </ComboboxRoot>
-
-            <Button
-              onClick={fetchRanking}
-              disabled={!selectedClassId || loadingRanking}
-              loading={loadingRanking}
-              h="48px"
-              borderLeftRadius="0"
-              borderRightRadius="md"
-              bg="#dd7323"
-              color="white"
-              _hover={{ bg: '#c2621a' }}
-              fontWeight="medium"
-              px="6"
-              whiteSpace="nowrap"
-              flexShrink={0}
-              marginLeft="-1px"
-            >
-              <Search size={22} />
-              Xem Ranking
-            </Button>
-          </Flex>
-        </div>
-
-        {/* Ranking Table */}
-        {rankingData.length > 0 && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden mt-4">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider w-20">
-                      Hạng
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Sinh viên
-                    </th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-slate-700 uppercase tracking-wider w-32">
-                      Điểm TB
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                      Gợi ý từ AI
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {rankingData.map((student) => (
-                    <tr 
-                      key={student.student_id} 
-                      className={`hover:bg-slate-50 transition-colors ${student.rank <= 3 ? 'bg-orange-50/30' : ''}`}
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          {getMedalIcon(student.rank)}
-                          <span className={`font-bold ${student.rank <= 3 ? 'text-lg' : 'text-slate-700'}`}>
-                            #{student.rank}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-slate-900">
-                            {student.student_name || `Student ID: ${student.student_id}`}
-                          </span>
-                          {student.student_email && (
-                            <span className="text-xs text-slate-500">{student.student_email}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex justify-center">
-                          <span className={`inline-flex px-3 py-1.5 text-sm font-bold rounded-lg ${getScoreColor(student.score)}`}>
-                            {student.score.toFixed(2)}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex items-start gap-2">
-                          <TrendingUp size={16} className="text-[#dd7323] mt-0.5 flex-shrink-0" />
-                          <span className="text-sm text-slate-700">{student.recommendations}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        <div className='grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4'>
+          <div className='bg-slate-50 rounded-xl p-4 text-center'>
+            <p className='text-3xl font-bold text-slate-800'>{stats.totalUsers}</p>
+            <p className='text-sm text-slate-500 mt-1'>Tổng số</p>
+          </div>
+          <div className='bg-blue-50 rounded-xl p-4 text-center'>
+            <p className='text-3xl font-bold text-blue-600'>{stats.totalStudents}</p>
+            <p className='text-sm text-slate-500 mt-1'>Sinh viên</p>
+          </div>
+          <div className='bg-purple-50 rounded-xl p-4 text-center'>
+            <p className='text-3xl font-bold text-purple-600'>{stats.totalLecturers}</p>
+            <p className='text-sm text-slate-500 mt-1'>Giảng viên</p>
+          </div>
+          <div className='bg-red-50 rounded-xl p-4 text-center'>
+            <p className='text-3xl font-bold text-red-600'>{stats.totalAdmins}</p>
+            <p className='text-sm text-slate-500 mt-1'>Admin</p>
+          </div>
+          <div className='bg-emerald-50 rounded-xl p-4 text-center'>
+            <div className='flex items-center justify-center gap-1'>
+              <UserCheck size={20} className='text-emerald-600' />
+              <p className='text-3xl font-bold text-emerald-600'>{stats.activeUsers}</p>
             </div>
-            
-            {/* Stats Footer */}
-            <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
-              <div className="text-sm text-slate-600">
-                Hiển thị <span className="font-semibold text-slate-900">{rankingData.length}</span> sinh viên
-              </div>
-              {rankingData.length > 0 && (
-                <div className="flex items-center gap-4 text-xs text-slate-500">
-                  <div className="flex items-center gap-1">
-                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                    <span>Giỏi: {rankingData.filter(s => s.score >= 8.5).length}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                    <span>Khá: {rankingData.filter(s => s.score >= 7.0 && s.score < 8.5).length}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                    <span>TB: {rankingData.filter(s => s.score >= 5.5 && s.score < 7.0).length}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                    <span>Yếu: {rankingData.filter(s => s.score < 5.5).length}</span>
-                  </div>
-                </div>
-              )}
+            <p className='text-sm text-slate-500 mt-1'>Hoạt động</p>
+          </div>
+          <div className='bg-gray-100 rounded-xl p-4 text-center'>
+            <div className='flex items-center justify-center gap-1'>
+              <UserX size={20} className='text-gray-500' />
+              <p className='text-3xl font-bold text-gray-500'>{stats.inactiveUsers}</p>
             </div>
-          </div>
-        )}
-
-        {/* Empty State */}
-        {!selectedClassId && !loadingRanking && (
-          <div className="bg-white rounded-xl border-2 border-dashed border-slate-300 p-12 text-center">
-            <Award size={48} className="mx-auto text-slate-300 mb-3" />
-            <p className="text-slate-500 font-medium">Chọn lớp học để xem ranking</p>
-            <p className="text-slate-400 text-sm mt-1">Hệ thống sẽ tính toán điểm tổng kết và gợi ý cải thiện</p>
-          </div>
-        )}
-
-        {selectedClassId && !loadingRanking && rankingData.length === 0 && (
-          <div className="bg-white rounded-xl border-2 border-dashed border-slate-300 p-12 text-center">
-            <Award size={48} className="mx-auto text-slate-300 mb-3" />
-            <p className="text-slate-500 font-medium">Chưa có dữ liệu điểm</p>
-            <p className="text-slate-400 text-sm mt-1">Lớp này chưa có sinh viên hoặc chưa có điểm</p>
-          </div>
-        )}
-      </div>
-
-      {/* Top Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-sm font-semibold text-slate-500 uppercase">Tổng lượt truy cập</h3>
-          <p className="text-3xl font-bold text-slate-800 mt-2">1.2M</p>
-          <div className="mt-4 h-16">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={SYSTEM_LOAD}>
-                <defs>
-                  <linearGradient id="colorLoad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#dd7323" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#dd7323" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <Area type="monotone" dataKey="load" stroke="#dd7323" strokeWidth={2} fillOpacity={1} fill="url(#colorLoad)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-        
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-sm font-semibold text-slate-500 uppercase">Tỷ lệ hoàn thành môn</h3>
-          <p className="text-3xl font-bold text-slate-800 mt-2">89.4%</p>
-          <p className="text-emerald-600 text-sm font-medium mt-1 flex items-center">
-             +2.1% so với kỳ trước
-          </p>
-        </div>
-
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <h3 className="text-sm font-semibold text-slate-500 uppercase">User Active (Realtime)</h3>
-          <p className="text-3xl font-bold text-slate-800 mt-2">452</p>
-          <div className="flex items-center gap-2 mt-2">
-            <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
-            <span className="text-xs text-slate-500">Hệ thống hoạt động bình thường</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Enrollment Trends */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-slate-800">Xu hướng tham gia học tập</h3>
-            <button className="p-2 hover:bg-slate-50 rounded-lg text-slate-400">
-              <Filter size={18} />
-            </button>
-          </div>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={ENROLLMENT_DATA}>
-                <defs>
-                  <linearGradient id="colorStudents" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#dd7323" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#dd7323" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorOnline" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#293548" stopOpacity={0.2}/>
-                    <stop offset="95%" stopColor="#293548" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#64748b'}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#64748b'}} />
-                <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }} />
-                <Legend iconType="circle" />
-                <Area type="monotone" dataKey="students" name="Tổng tham gia" stroke="#dd7323" fillOpacity={1} fill="url(#colorStudents)" />
-                <Area type="monotone" dataKey="online" name="Học Online" stroke="#293548" fillOpacity={1} fill="url(#colorOnline)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Grade Distribution */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-slate-800">Phân phối điểm số</h3>
-            <select className="text-sm border-none bg-slate-50 rounded-lg px-2 py-1 text-slate-600 outline-none">
-              <option>Tất cả khoa</option>
-              <option>CNTT</option>
-              <option>Kinh tế</option>
-            </select>
-          </div>
-          <div className="h-80 flex items-center justify-center">
-             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={GRADE_DISTRIBUTION}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={80}
-                  outerRadius={110}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {GRADE_DISTRIBUTION.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend layout="vertical" verticalAlign="middle" align="right" />
-              </PieChart>
-            </ResponsiveContainer>
+            <p className='text-sm text-slate-500 mt-1'>Đã khóa</p>
           </div>
         </div>
       </div>
     </div>
-  );
-};
+  )
+}
 
-export default AnalyticsPage;
+export default AnalyticsPage

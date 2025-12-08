@@ -3,63 +3,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Box, Button, Text, VStack, Spinner, Center } from '@chakra-ui/react'
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay'
-import { BookOpen, GraduationCap, Plus } from 'lucide-react'
+import { BookOpen, GraduationCap } from 'lucide-react'
 import api from '../../utils/axios'
 import CourseCard, { type EnrolledClass } from '../../components/ui/CourseCard'
 import PageHeader from '../../components/ui/PageHeader'
 import { useAuthStore } from '../../store/authStore'
 import { toaster } from '../../components/ui/toaster'
-
-// ============================================
-// MOCK DATA - Set to true to use mock data
-// ============================================
-const USE_MOCK_DATA = true
-
-const MOCK_COURSES: EnrolledClass[] = [
-  {
-    classId: 'CS101-01',
-    subjectId: 'CS101',
-    subjectName: 'Nhập môn lập trình',
-    lecturerName: 'Nguyễn Văn An',
-    totalStudents: 45,
-    enrolledAt: '2024-09-01T08:00:00Z'
-  },
-  {
-    classId: 'CS201-02',
-    subjectId: 'CS201',
-    subjectName: 'Cấu trúc dữ liệu và giải thuật',
-    lecturerName: 'Trần Thị Bình',
-    totalStudents: 38,
-    enrolledAt: '2024-09-02T10:30:00Z'
-  },
-  {
-    classId: 'CS301-01',
-    subjectId: 'CS301',
-    subjectName: 'Cơ sở dữ liệu',
-    lecturerName: 'Lê Hoàng Cường',
-    totalStudents: 42,
-    enrolledAt: '2024-09-03T14:00:00Z'
-  },
-  {
-    classId: 'CS401-03',
-    subjectId: 'CS401',
-    subjectName: 'Phát triển ứng dụng Web',
-    lecturerName: 'Phạm Minh Đức',
-    totalStudents: 35,
-    enrolledAt: '2024-09-05T09:15:00Z'
-  },
-  {
-    classId: 'CS501-01',
-    subjectId: 'CS501',
-    subjectName: 'Trí tuệ nhân tạo',
-    lecturerName: 'Hoàng Thị Lan',
-    totalStudents: 30,
-    enrolledAt: '2024-09-10T11:00:00Z'
-  }
-]
-
-// Import types from centralized types
-import type { StudentEnrolledClassDTO, EnrolledClassesResponse } from '../../types'
 
 export default function MyCoursesRoute() {
   const [courses, setCourses] = useState<EnrolledClass[]>([])
@@ -69,39 +18,24 @@ export default function MyCoursesRoute() {
   const { user } = useAuthStore()
 
   const fetchMyCourses = useCallback(async () => {
-    // Use mock data for UI testing
-    if (USE_MOCK_DATA) {
-      setLoading(true)
-      await new Promise((resolve) => setTimeout(resolve, 500)) // Simulate loading
-      setCourses(MOCK_COURSES)
-      setLoading(false)
-      return
-    }
-
-    if (!user?.id) {
-      setError('Vui lòng đăng nhập để xem danh sách lớp học.')
-      setLoading(false)
-      return
-    }
-
     setLoading(true)
     setError(null)
     try {
-      // Call API to get enrolled classes
-      const response = await api.get<EnrolledClassesResponse>('/student/classes/class-enrolled', {
-        params: {
-          student_id: user.id
-        }
-      })
+      // Call API to get enrolled classes - GET /api/student/classes/enrolled
+      const response = await api.get('/api/student/classes/enrolled')
+      console.log('Enrolled classes response:', response.data)
+
+      // BE trả về { data: [...], count, message, status }
+      const results = (response.data as any)?.data || response.data?.results || []
 
       // Map API response to EnrolledClass format
-      const mappedCourses: EnrolledClass[] = (response.data.results || []).map((c: StudentEnrolledClassDTO) => ({
-        classId: c.class_id,
-        subjectId: c.class_id, // Using class_id as subjectId if not provided
-        subjectName: c.subjectName || c.name,
-        lecturerName: c.lecturerName,
-        totalStudents: c.student_count,
-        enrolledAt: c.enrolled_at
+      const mappedCourses: EnrolledClass[] = results.map((c: any) => ({
+        classId: c.id || c.classId || c.class_id || '',
+        subjectId: c.subjectId || c.subject_id || '',
+        subjectName: c.subjectName || c.name || '',
+        lecturerName: c.lecturerName || c.teacherName || '',
+        totalStudents: c.studentCount || c.student_count || 0,
+        enrolledAt: c.enrolledAt || c.enrolled_at || c.createdAt || ''
       }))
 
       setCourses(mappedCourses)
@@ -112,7 +46,7 @@ export default function MyCoursesRoute() {
     } finally {
       setLoading(false)
     }
-  }, [user?.id])
+  }, [])
 
   useEffect(() => {
     fetchMyCourses()
@@ -185,31 +119,10 @@ export default function MyCoursesRoute() {
 
   // Main UI
   return (
-    <Box w='full' py={8} px={{ base: 4, sm: 6, lg: 8 }} bg='white' minH='100vh'>
+    <Box w='full' py={8} px={{ base: 4, sm: 6, lg: 8 }} bg='white' minH='100vh' overflowY='auto'>
       <Box maxW='6xl' mx='auto'>
         {/* Header */}
-        <PageHeader icon={GraduationCap} title='Lớp học của tôi' subtitle='Quản lý các lớp học bạn đã đăng ký'>
-          <Button
-            bg='#dd7323'
-            color='white'
-            size='lg'
-            borderRadius='xl'
-            shadow='md'
-            gap={2}
-            px={6}
-            fontWeight='semibold'
-            _hover={{
-              bg: '#c5651f',
-              shadow: '0 8px 25px -5px rgba(237, 137, 54, 0.5)',
-              transform: 'translateY(-2px)'
-            }}
-            transition='all 0.2s ease-in-out'
-            onClick={() => (window.location.href = '/student/all-courses')}
-          >
-            <Plus size={18} />
-            Đăng ký lớp mới
-          </Button>
-        </PageHeader>
+        <PageHeader icon={GraduationCap} title='Lớp học của tôi' subtitle='Quản lý các lớp học bạn đã đăng ký' />
 
         {/* Courses Grid or Suggest Enroll */}
         {courses.length === 0 ? (
@@ -225,7 +138,6 @@ export default function MyCoursesRoute() {
               maxW='lg'
               w='full'
               position='relative'
-              overflow='hidden'
               _before={{
                 content: '""',
                 position: 'absolute',

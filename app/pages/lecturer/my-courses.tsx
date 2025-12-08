@@ -22,20 +22,6 @@ import StatsCard from '../../components/ui/StatsCard'
 import EmptyState from '../../components/ui/EmptyState'
 import { SelectRoot, SelectTrigger, SelectContent, SelectItem, SelectValueText } from '../../components/ui/select'
 import { lecturerClassApi } from '../../services/lecturerApi'
-import type { ClassDTO } from '../../types'
-
-// ============================================
-// MOCK DATA
-// ============================================
-const USE_MOCK_DATA = true
-
-const MOCK_CLASSES: ClassDTO[] = [
-  { id: 1, name: 'CS101-01', subject_id: 1, subject_name: 'Nhập môn lập trình', teacher_id: 1, semester: 'HK1', academic_year: '2024-2025', student_count: 45, status: 1, created_at: '2024-09-01', updated_at: '' },
-  { id: 2, name: 'CS201-02', subject_id: 2, subject_name: 'Cấu trúc dữ liệu và giải thuật', teacher_id: 1, semester: 'HK1', academic_year: '2024-2025', student_count: 38, status: 1, created_at: '2024-09-01', updated_at: '' },
-  { id: 3, name: 'CS301-01', subject_id: 3, subject_name: 'Cơ sở dữ liệu', teacher_id: 1, semester: 'HK1', academic_year: '2024-2025', student_count: 42, status: 1, created_at: '2024-09-01', updated_at: '' },
-  { id: 4, name: 'CS401-03', subject_id: 4, subject_name: 'Phát triển ứng dụng Web', teacher_id: 1, semester: 'HK2', academic_year: '2024-2025', student_count: 35, status: 1, created_at: '2024-09-01', updated_at: '' },
-  { id: 5, name: 'CS501-01', subject_id: 5, subject_name: 'Trí tuệ nhân tạo', teacher_id: 1, semester: 'HK2', academic_year: '2024-2025', student_count: 30, status: 0, created_at: '2024-09-01', updated_at: '' }
-]
 
 // Card backgrounds
 const CARD_BACKGROUNDS = [
@@ -47,8 +33,14 @@ const CARD_BACKGROUNDS = [
   'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)'
 ]
 
-function getBackgroundIndex(id: number): number {
-  return id % CARD_BACKGROUNDS.length
+function getBackgroundIndex(id: string): number {
+  // Hash string ID to get consistent index
+  let hash = 0
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash << 5) - hash + id.charCodeAt(i)
+    hash |= 0
+  }
+  return Math.abs(hash) % CARD_BACKGROUNDS.length
 }
 
 // Get status badge
@@ -56,52 +48,77 @@ function getStatusBadge(status: number) {
   if (status === 1) {
     return { label: 'Đang giảng dạy', color: 'blue' }
   }
-  return { label: 'Đã kết thúc', color: 'green' }
+  return { label: 'Đã kết thúc', color: 'gray' }
 }
+
+// Status filter options
+const statusCollection = createListCollection({
+  items: [
+    { value: '', label: 'Tất cả trạng thái' },
+    { value: '1', label: 'Đang giảng dạy' },
+    { value: '0', label: 'Đã kết thúc' }
+  ]
+})
 
 export default function LecturerMyCourses() {
   const navigate = useNavigate()
   const [searchKeyword, setSearchKeyword] = useState('')
-  const [semesterFilter, setSemesterFilter] = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState<string>('')
 
-  // Fetch classes
+  // Fetch ALL classes from API once (không gửi params vì BE không hỗ trợ filter theo keyword)
   const { data: classesData, isLoading } = useQuery({
     queryKey: ['lecturer-classes'],
     queryFn: async () => {
-      if (USE_MOCK_DATA) {
-        await new Promise((r) => setTimeout(r, 400))
-        return { results: MOCK_CLASSES }
-      }
-      return lecturerClassApi.getClasses()
+      console.log('Fetching all lecturer classes...')
+      const response = await lecturerClassApi.getClasses()
+      console.log('Lecturer classes RAW response:', response)
+      return response
     }
   })
 
-  const classes = classesData?.results || []
+  // Transform API response to local format
+  // BE trả về { data: [...], count, message, status } chứ không phải { results: [...] }
+  const allClasses = useMemo(() => {
+    const results = (classesData as any)?.data || classesData?.results || []
+    return results.map((c: any) => ({
+      id: c.id || '',
+      name: c.name || c.title || '',
+      subject_id: c.subjectId || '',
+      subject_name: c.subjectName || c.subtitle || '',
+      teacher_id: c.lecturerId || '',
+      semester: c.semester || '',
+      academic_year: c.academicYear || '',
+      student_count: c.studentCount || 0,
+      status: c.status ?? 1,
+      created_at: c.createdAt || '',
+      updated_at: c.updatedAt || ''
+    }))
+  }, [classesData])
 
-  // Get unique semesters and create collection for Select
-  const semesterCollection = useMemo(() => {
-    const uniqueSemesters = new Set(classes.map((c) => `${c.semester} ${c.academic_year}`))
-    const items = [
-      { value: '', label: 'Tất cả kỳ học' },
-      ...Array.from(uniqueSemesters).map((sem) => ({ value: sem, label: sem }))
-    ]
-    return createListCollection({ items })
-  }, [classes])
+  // Filter classes on FE (vì BE không hỗ trợ filter theo keyword)
+  const classes = useMemo(() => {
+    let filtered = allClasses
 
-  // Filter classes
-  const filteredClasses = useMemo(() => {
-    return classes.filter((c) => {
-      const matchesSearch =
-        c.name.toLowerCase().includes(searchKeyword.toLowerCase()) ||
-        c.subject_name?.toLowerCase().includes(searchKeyword.toLowerCase())
-      const matchesSemester = !semesterFilter || `${c.semester} ${c.academic_year}` === semesterFilter
-      return matchesSearch && matchesSemester
-    })
-  }, [classes, searchKeyword, semesterFilter])
+    // Filter by keyword (search by name, case-insensitive)
+    if (searchKeyword.trim()) {
+      const keyword = searchKeyword.toLowerCase()
+      filtered = filtered.filter(
+        (c: any) => c.name.toLowerCase().includes(keyword) || c.subject_name?.toLowerCase().includes(keyword)
+      )
+    }
 
-  // Stats
-  const activeClasses = classes.filter((c) => c.status === 1).length
-  const totalStudents = classes.reduce((sum, c) => sum + (c.student_count || 0), 0)
+    // Filter by status
+    if (statusFilter !== '') {
+      const status = parseInt(statusFilter)
+      filtered = filtered.filter((c: any) => c.status === status)
+    }
+
+    return filtered
+  }, [allClasses, searchKeyword, statusFilter])
+
+  // Stats (dùng allClasses để hiển thị tổng số thực tế, không bị ảnh hưởng bởi filter)
+  const activeClasses = allClasses.filter((c: any) => c.status === 1).length
+  const totalStudents = allClasses.reduce((sum: number, c: any) => sum + (c.student_count || 0), 0)
 
   if (isLoading) {
     return (
@@ -139,7 +156,7 @@ export default function LecturerMyCourses() {
         {/* Stats */}
         <HStack gap={4} px={6} mb={6} flexWrap='wrap'>
           <Box flex={1} minW='200px'>
-            <StatsCard label='Tổng số lớp' value={classes.length} icon={BookOpen} />
+            <StatsCard label='Tổng số lớp' value={allClasses.length} icon={BookOpen} />
           </Box>
           <Box flex={1} minW='200px'>
             <StatsCard label='Lớp đang hoạt động' value={activeClasses} icon={GraduationCap} />
@@ -160,7 +177,7 @@ export default function LecturerMyCourses() {
                 </Box>
                 <Input
                   pl={10}
-                  placeholder='Tìm kiếm theo tên lớp, môn học...'
+                  placeholder='Tìm kiếm theo tên lớp...'
                   value={searchKeyword}
                   onChange={(e) => setSearchKeyword(e.target.value)}
                   borderColor='orange.200'
@@ -169,23 +186,19 @@ export default function LecturerMyCourses() {
                 />
               </Box>
 
-              {/* Semester Filter */}
+              {/* Status Filter */}
               <SelectRoot
-                collection={semesterCollection}
-                value={semesterFilter ? [semesterFilter] : ['']}
-                onValueChange={(details) => setSemesterFilter(details.value[0] || '')}
+                collection={statusCollection}
+                value={statusFilter !== '' ? [statusFilter] : ['']}
+                onValueChange={(details) => setStatusFilter(details.value[0] || '')}
                 size='md'
                 w='220px'
               >
-                <SelectTrigger
-                  borderColor='orange.200'
-                  borderRadius='xl'
-                  _hover={{ borderColor: '#dd7323' }}
-                >
-                  <SelectValueText placeholder='Tất cả kỳ học' />
+                <SelectTrigger borderColor='orange.200' borderRadius='xl' _hover={{ borderColor: '#dd7323' }}>
+                  <SelectValueText placeholder='Tất cả trạng thái' />
                 </SelectTrigger>
                 <SelectContent>
-                  {semesterCollection.items.map((item) => (
+                  {statusCollection.items.map((item) => (
                     <SelectItem key={item.value} item={item}>
                       {item.label}
                     </SelectItem>
@@ -197,7 +210,7 @@ export default function LecturerMyCourses() {
         </Card.Root>
 
         {/* Classes Grid */}
-        {filteredClasses.length === 0 ? (
+        {classes.length === 0 ? (
           <Box px={6}>
             <EmptyState
               icon={BookOpen}
@@ -206,13 +219,8 @@ export default function LecturerMyCourses() {
             />
           </Box>
         ) : (
-          <Flex 
-            flexWrap='wrap' 
-            gap={6} 
-            px={6}
-            justify={filteredClasses.length < 3 ? 'center' : 'flex-start'}
-          >
-            {filteredClasses.map((classData) => {
+          <Flex flexWrap='wrap' gap={6} px={6} justify={classes.length < 3 ? 'center' : 'flex-start'}>
+            {classes.map((classData: any) => {
               const bgIndex = getBackgroundIndex(classData.id)
               const statusBadge = getStatusBadge(classData.status)
 
@@ -278,7 +286,11 @@ export default function LecturerMyCourses() {
                       color='white'
                       borderRadius='xl'
                       _hover={{ bg: '#c5651f' }}
-                      onClick={() => navigate(`/lecturer/classes/${classData.id}`)}
+                      onClick={() => {
+                        // Remove CLASS# prefix if present
+                        const classId = classData.id.replace('CLASS#', '')
+                        navigate(`/lecturer/classes/${classId}`)
+                      }}
                     >
                       <Eye size={16} />
                       <Text ml={2}>Vào lớp</Text>

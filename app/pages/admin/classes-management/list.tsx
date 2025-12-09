@@ -102,12 +102,24 @@ const ClassesList: React.FC = () => {
       if (status !== '') params.status = status
 
       // === GỌI API GET /api/admin/classes ===
-      const response = await api.get<{ results: ClassDTO[] }>('/api/admin/classes', { params })
+      const response = await api.get('/api/admin/classes', { params })
 
       console.log('=== CLASSES API RESPONSE ===', response.data)
 
+      // Handle different response formats from BE
+      let classesData: ClassDTO[] = []
+      if (Array.isArray(response.data)) {
+        classesData = response.data
+      } else if (response.data?.results) {
+        classesData = response.data.results
+      } else if (response.data?.data) {
+        classesData = response.data.data
+      }
+
+      console.log('=== CLASSES DATA EXTRACTED ===', classesData)
+
       // Transform ClassDTO to ClassDisplay format
-      const transformedClasses: ClassDisplay[] = (response.data.results || []).map((dto) => ({
+      const transformedClasses: ClassDisplay[] = classesData.map((dto: ClassDTO) => ({
         id: dto.id,
         classCode: dto.id,
         name: dto.name,
@@ -119,6 +131,8 @@ const ClassesList: React.FC = () => {
         status: dto.status,
         description: dto.description || ''
       }))
+
+      console.log('=== TRANSFORMED CLASSES ===', transformedClasses)
 
       setAllClasses(transformedClasses)
     } catch (error: any) {

@@ -39,15 +39,21 @@ const normalizeRole = (role?: string | null): 'Student' | 'Lecturer' | 'Admin' |
 }
 
 // Helper function để lấy profile từ API
-const fetchUserProfile = async (accessToken: string): Promise<ProfileData | null> => {
+// BE yêu cầu: Authorization = Bearer accessToken, user-idToken = idToken
+const fetchUserProfile = async (accessToken: string, idToken?: string): Promise<ProfileData | null> => {
   try {
     const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    }
+    if (idToken) {
+      headers['user-idToken'] = idToken
+    }
+
     const response = await fetch(`${apiBaseUrl}/api/users/profile`, {
       method: 'GET',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json'
-      }
+      headers
     })
 
     if (!response.ok) {
@@ -109,7 +115,7 @@ export const useAuthStore = create<AuthState>()(
             username: email,
             password: password
           })
-
+          console.log('res login: ', signInResult)
           // Kiểm tra xem có cần bước bổ sung không
           if (!signInResult.isSignedIn && signInResult.nextStep) {
             const nextStep = signInResult.nextStep.signInStep
@@ -152,26 +158,36 @@ export const useAuthStore = create<AuthState>()(
             const currentUser = await getCurrentUser()
             const userAttributes = await fetchUserAttributes()
 
-            // Lấy role từ nhiều nguồn có thể:
-            // 1. ID Token payload (custom:role)
-            // 2. User attributes (custom:role hoặc custom:Role)
-            // 3. User attributes (role)
-            const idTokenRole = tokens.idToken?.payload['custom:role']
-            const attrRole = userAttributes['custom:role'] || userAttributes['custom:Role'] || userAttributes.role
-            let finalRole = idTokenRole || attrRole
+            // Lấy cả 2 token từ Cognito
+            const accessTokenStr = tokens.accessToken.toString()
+            const idTokenStr = tokens.idToken?.toString() || ''
 
-            // Fetch profile from API to get accurate role and user info
+            // Debug: Log all tokens
+            console.log('=== DEBUG TOKENS ===')
+            console.log('accessToken:', accessTokenStr.substring(0, 50) + '...')
+            console.log('idToken:', idTokenStr.substring(0, 50) + '...')
+            console.log('=== END DEBUG TOKENS ===')
+
+            // Fetch profile from API với cả 2 token
+            // BE yêu cầu: Authorization = accessToken, user-idToken = idToken
             let profileData: ProfileData | null = null
             try {
-              profileData = await fetchUserProfile(tokens.accessToken.toString())
+              profileData = await fetchUserProfile(accessTokenStr, idTokenStr)
               console.log('Profile data from API:', profileData)
             } catch (error) {
               console.error('Error fetching profile:', error)
             }
 
-            // Use role from profile API if available, otherwise fallback to Cognito
+            // Lấy role từ profile API trước, nếu không có thì fallback về Cognito attributes
             // Normalize role since API may return lowercase (e.g., "lecturer" instead of "Lecturer")
-            const roleValue = normalizeRole(profileData?.role) || normalizeRole(finalRole as string) || 'Student'
+            const idTokenRole = tokens.idToken?.payload['custom:role']
+            const attrRole = userAttributes['custom:role'] || userAttributes['custom:Role'] || userAttributes.role
+            const roleValue =
+              normalizeRole(profileData?.role) ||
+              normalizeRole(idTokenRole as string) ||
+              normalizeRole(attrRole as string) ||
+              'Student'
+            console.log('Final role from profile API:', roleValue)
 
             const userData: User = {
               id: profileData?.id || currentUser.userId,
@@ -179,7 +195,7 @@ export const useAuthStore = create<AuthState>()(
               email: profileData?.email || userAttributes.email || email,
               fullName: profileData?.name || userAttributes.name || userAttributes.email || '',
               role: roleValue,
-              token: tokens.accessToken.toString(), // For backward compatibility
+              token: accessTokenStr, // Lưu accessToken
               avatar: profileData?.avatar || userAttributes.picture || '',
               phone: profileData?.phone || userAttributes.phone_number || '',
               isEmailVerified: userAttributes.email_verified === 'true',
@@ -190,11 +206,12 @@ export const useAuthStore = create<AuthState>()(
             }
 
             // Store tokens và user info
+            // BE yêu cầu: Authorization = accessToken, user-idToken = idToken
             set({
               user: userData,
-              accessToken: tokens.accessToken.toString(),
+              accessToken: accessTokenStr, // accessToken từ Cognito
               refreshToken: null, // AWS Amplify v6 manages refresh token internally
-              idToken: tokens.idToken?.toString() || null,
+              idToken: idTokenStr, // idToken từ Cognito
               isAuthenticated: true,
               isLoading: false,
               error: null
@@ -252,10 +269,15 @@ export const useAuthStore = create<AuthState>()(
             const attrRole = userAttributes['custom:role'] || userAttributes['custom:Role'] || userAttributes.role
             const finalRole = idTokenRole || attrRole
 
-            // Fetch profile from API to get accurate role and user info
+            // Lấy cả 2 token
+            const accessTokenStr = tokens.accessToken.toString()
+            const idTokenStr = tokens.idToken?.toString() || ''
+            console.log('Cả 2 token nè: ' + ' ' + accessTokenStr + ' ' + idTokenStr)
+
+            // Fetch profile from API với cả 2 token
             let profileData: ProfileData | null = null
             try {
-              profileData = await fetchUserProfile(tokens.accessToken.toString())
+              profileData = await fetchUserProfile(accessTokenStr, idTokenStr)
               console.log('Profile data from API (confirm password):', profileData)
             } catch (error) {
               console.error('Error fetching profile:', error)
@@ -272,7 +294,7 @@ export const useAuthStore = create<AuthState>()(
               email: profileData?.email || userAttributes.email || '',
               fullName: profileData?.name || userAttributes.name || userAttributes.email || '',
               role: roleValue,
-              token: tokens.accessToken.toString(),
+              token: accessTokenStr,
               avatar: profileData?.avatar || userAttributes.picture || '',
               phone: profileData?.phone || userAttributes.phone_number || '',
               isEmailVerified: userAttributes.email_verified === 'true',
@@ -284,9 +306,9 @@ export const useAuthStore = create<AuthState>()(
 
             set({
               user: userData,
-              accessToken: tokens.accessToken.toString(),
-              refreshToken: null, // AWS Amplify v6 manages refresh token internally
-              idToken: tokens.idToken?.toString() || null,
+              accessToken: accessTokenStr,
+              refreshToken: null,
+              idToken: idTokenStr,
               isAuthenticated: true,
               isLoading: false,
               error: null,
@@ -391,8 +413,14 @@ export const useAuthStore = create<AuthState>()(
         try {
           set({ isLoading: true })
 
-          // Sign out từ Cognito
-          await signOut()
+          // Set flag để ngăn checkAuthStatus chạy lại sau khi redirect
+          sessionStorage.setItem('logging-out', 'true')
+
+          // Sign out từ Cognito với global: true để clear tất cả sessions
+          await signOut({ global: true })
+
+          // Clear localStorage để đảm bảo không còn data persist
+          localStorage.removeItem('auth-storage')
 
           set({
             user: null,
@@ -405,7 +433,18 @@ export const useAuthStore = create<AuthState>()(
             pendingSignIn: false
           })
         } catch (error: any) {
-          set({ isLoading: false, error: error.message })
+          // Vẫn clear state ngay cả khi signOut fail
+          localStorage.removeItem('auth-storage')
+          set({
+            user: null,
+            accessToken: null,
+            refreshToken: null,
+            idToken: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: error.message,
+            pendingSignIn: false
+          })
           throw error
         }
       },
@@ -417,15 +456,16 @@ export const useAuthStore = create<AuthState>()(
           const tokens = session.tokens
 
           if (tokens?.accessToken) {
-            const accessToken = tokens.accessToken.toString()
+            const accessTokenStr = tokens.accessToken.toString()
+            const idTokenStr = tokens.idToken?.toString() || ''
 
             set({
-              accessToken,
-              refreshToken: null, // AWS Amplify v6 manages refresh token internally
-              idToken: tokens.idToken?.toString() || null
+              accessToken: accessTokenStr,
+              refreshToken: null,
+              idToken: idTokenStr
             })
 
-            return accessToken
+            return accessTokenStr
           }
 
           return null
@@ -438,6 +478,13 @@ export const useAuthStore = create<AuthState>()(
       // Check auth status khi app khởi động
       checkAuthStatus: async () => {
         try {
+          // Nếu đang trong quá trình logout, skip check và redirect về login
+          if (sessionStorage.getItem('logging-out') === 'true') {
+            sessionStorage.removeItem('logging-out')
+            set({ isAuthenticated: false, isLoading: false })
+            return
+          }
+
           set({ isLoading: true })
 
           const currentUser = await getCurrentUser()
@@ -457,10 +504,14 @@ export const useAuthStore = create<AuthState>()(
             const attrRole = userAttributes['custom:role'] || userAttributes['custom:Role'] || userAttributes.role
             const finalRole = idTokenRole || attrRole
 
-            // Fetch profile from API to get accurate role and user info
+            // Lấy cả 2 token
+            const accessTokenStr = tokens.accessToken.toString()
+            const idTokenStr = tokens.idToken?.toString() || ''
+
+            // Fetch profile from API với cả 2 token
             let profileData: ProfileData | null = null
             try {
-              profileData = await fetchUserProfile(tokens.accessToken.toString())
+              profileData = await fetchUserProfile(accessTokenStr, idTokenStr)
               console.log('Profile data from API (check auth):', profileData)
             } catch (error) {
               console.error('Error fetching profile:', error)
@@ -477,7 +528,7 @@ export const useAuthStore = create<AuthState>()(
               email: profileData?.email || userAttributes.email || '',
               fullName: profileData?.name || userAttributes.name || userAttributes.email || '',
               role: roleValue,
-              token: tokens.accessToken.toString(),
+              token: accessTokenStr,
               avatar: profileData?.avatar || userAttributes.picture || '',
               phone: profileData?.phone || userAttributes.phone_number || '',
               isEmailVerified: userAttributes.email_verified === 'true',
@@ -489,9 +540,9 @@ export const useAuthStore = create<AuthState>()(
 
             set({
               user: userData,
-              accessToken: tokens.accessToken.toString(),
-              refreshToken: null, // AWS Amplify v6 manages refresh token internally
-              idToken: tokens.idToken?.toString() || null,
+              accessToken: accessTokenStr,
+              refreshToken: null,
+              idToken: idTokenStr,
               isAuthenticated: true
             })
           } else {

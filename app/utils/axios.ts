@@ -33,22 +33,36 @@ const processQueue = (error: any = null) => {
   failedQueue = []
 }
 
-// Request interceptor - thêm AccessToken vào mỗi request
+// Request interceptor - gửi CẢ HAI token trong header
+// BE dùng idToken để xác thực user, accessToken cho một số API khác
 api.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     try {
       // Lấy token từ Cognito session
       const session = await fetchAuthSession()
+      const idToken = session.tokens?.idToken?.toString()
       const accessToken = session.tokens?.accessToken?.toString()
 
-      if (accessToken && config.headers) {
-        // Thêm AccessToken vào Authorization header với Bearer prefix (chuẩn OAuth2)
-        config.headers.Authorization = `Bearer ${accessToken}`
+      console.log('=== TOKEN DEBUG ===')
+      console.log('idToken exists:', !!idToken)
+      console.log('accessToken exists:', !!accessToken)
+      console.log('Request URL:', config.url)
+
+      if (config.headers) {
+        // BE yêu cầu:
+        // - Authorization: Bearer accessToken
+        // - user-idToken: idToken (để lấy email/user info)
+        if (accessToken) {
+          config.headers.Authorization = `Bearer ${accessToken}`
+        }
+        if (idToken) {
+          config.headers['user-idToken'] = idToken
+        }
       }
 
       return config
     } catch (error) {
-      console.error('Error getting access token:', error)
+      console.error('Error getting token:', error)
       return config
     }
   },
@@ -113,10 +127,19 @@ api.interceptors.response.use(
       try {
         // Refresh token thông qua Cognito
         const session = await fetchAuthSession({ forceRefresh: true })
+        const newIdToken = session.tokens?.idToken?.toString()
         const newAccessToken = session.tokens?.accessToken?.toString()
 
-        if (newAccessToken && originalRequest.headers) {
-          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
+        if (originalRequest.headers) {
+          // BE yêu cầu:
+          // - Authorization: Bearer accessToken
+          // - user-idToken: idToken
+          if (newAccessToken) {
+            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`
+          }
+          if (newIdToken) {
+            originalRequest.headers['user-idToken'] = newIdToken
+          }
         }
 
         processQueue(null)
@@ -136,7 +159,7 @@ api.interceptors.response.use(
 
         // Redirect to login
         if (typeof window !== 'undefined') {
-          window.location.href = '/auth/login'
+          window.location.href = '/login'
         }
 
         return Promise.reject(refreshError)

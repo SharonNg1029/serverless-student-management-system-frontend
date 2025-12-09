@@ -38,23 +38,8 @@ import { lecturerClassApi, lecturerNotificationApi } from '../../services/lectur
 import type { ClassDTO, NotificationDTO } from '../../types'
 
 // ============================================
-// MOCK DATA - Set to true to use mock data
+// USE REAL API DATA
 // ============================================
-const USE_MOCK_DATA = true
-
-const MOCK_CLASSES: ClassDTO[] = [
-  { id: 1, name: 'CS101-01', subject_id: 1, subject_name: 'Nhập môn lập trình', teacher_id: 1, semester: 'HK1', academic_year: '2024-2025', student_count: 45, status: 1, created_at: '', updated_at: '' },
-  { id: 2, name: 'CS201-02', subject_id: 2, subject_name: 'Cấu trúc dữ liệu', teacher_id: 1, semester: 'HK1', academic_year: '2024-2025', student_count: 38, status: 1, created_at: '', updated_at: '' },
-  { id: 3, name: 'CS301-01', subject_id: 3, subject_name: 'Cơ sở dữ liệu', teacher_id: 1, semester: 'HK1', academic_year: '2024-2025', student_count: 42, status: 1, created_at: '', updated_at: '' }
-]
-
-const MOCK_NOTIFICATIONS: NotificationDTO[] = [
-  { id: 1, title: 'Thông báo nghỉ lễ 2/9', content: 'Nhà trường thông báo lịch nghỉ lễ Quốc khánh 2/9...', sender_id: 0, created_at: new Date(Date.now() - 5 * 60 * 1000).toISOString(), type: 'received' },
-  { id: 2, title: 'Cập nhật quy chế đào tạo', content: 'Phòng Đào tạo thông báo về việc cập nhật quy chế...', sender_id: 0, created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), type: 'received' },
-  { id: 3, title: 'Hội thảo khoa học', content: 'Khoa CNTT tổ chức hội thảo khoa học vào ngày...', sender_id: 0, created_at: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), type: 'received' },
-  { id: 4, title: 'Lịch họp khoa tháng 12', content: 'Thông báo lịch họp khoa định kỳ tháng 12/2024...', sender_id: 0, created_at: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), type: 'received' },
-  { id: 5, title: 'Đăng ký đề tài NCKH', content: 'Thông báo về việc đăng ký đề tài nghiên cứu khoa học...', sender_id: 0, created_at: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), type: 'received' }
-]
 
 // ============================================
 // HELPER FUNCTIONS
@@ -104,35 +89,45 @@ export default function LecturerDashboard() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const today = new Date()
 
-  // Fetch classes
+  // Fetch classes - API trả về { data: [...], count, message, status }
   const { data: classesData, isLoading: classesLoading } = useQuery({
     queryKey: ['lecturer-classes'],
     queryFn: async () => {
-      if (USE_MOCK_DATA) {
-        await new Promise((r) => setTimeout(r, 300))
-        return { results: MOCK_CLASSES }
-      }
-      return lecturerClassApi.getClasses()
+      const response = await lecturerClassApi.getClasses()
+      return response
     }
   })
 
-  // Fetch notifications
+  // Fetch notifications - API trả về array trực tiếp
   const { data: notificationsData, isLoading: notificationsLoading } = useQuery({
     queryKey: ['lecturer-notifications'],
     queryFn: async () => {
-      if (USE_MOCK_DATA) {
-        await new Promise((r) => setTimeout(r, 300))
-        return { results: MOCK_NOTIFICATIONS }
+      try {
+        const response = await lecturerNotificationApi.getReceivedNotifications()
+        // API đã trả về array trực tiếp
+        return Array.isArray(response) ? response : []
+      } catch {
+        // Nếu API lỗi, trả về empty array
+        return []
       }
-      return lecturerNotificationApi.getReceivedNotifications()
     }
   })
 
-  const classes = classesData?.results || []
-  const notifications = notificationsData?.results || []
-  const unreadCount = notifications.filter((n) => !n.is_read).length
-  const activeClasses = classes.filter((c) => c.status === 1).length
-  const totalStudents = classes.reduce((sum, c) => sum + (c.student_count || 0), 0)
+  // Parse classes from API response - handle both formats
+  const classes = useMemo(() => {
+    const data = (classesData as any)?.data || classesData?.results || []
+    return Array.isArray(data) ? data : []
+  }, [classesData])
+
+  // Parse notifications - API đã trả về array trực tiếp
+  const notifications = useMemo(() => {
+    return Array.isArray(notificationsData) ? notificationsData : []
+  }, [notificationsData])
+
+  // Calculate stats
+  const unreadCount = notifications.filter((n: any) => !n.is_read && !n.isRead).length
+  const activeClasses = classes.filter((c: any) => c.status === 1 || c.status === 'active').length
+  const totalStudents = classes.reduce((sum: number, c: any) => sum + (c.student_count || c.studentCount || 0), 0)
 
   const statsLoading = classesLoading || notificationsLoading
 
@@ -202,18 +197,8 @@ export default function LecturerDashboard() {
               isLoading={statsLoading}
               onClick={() => navigate('/lecturer/my-courses')}
             />
-            <StatsCard
-              label='Tổng sinh viên'
-              value={totalStudents}
-              icon={Users}
-              isLoading={statsLoading}
-            />
-            <StatsCard
-              label='Bài tập chưa chấm'
-              value='--'
-              icon={FileText}
-              isLoading={statsLoading}
-            />
+            <StatsCard label='Tổng sinh viên' value={totalStudents} icon={Users} isLoading={statsLoading} />
+            <StatsCard label='Bài tập chưa chấm' value='--' icon={FileText} isLoading={statsLoading} />
           </Grid>
         </Box>
 
@@ -250,7 +235,7 @@ export default function LecturerDashboard() {
                   <Center py={8}>
                     <Spinner size='lg' color='#dd7323' />
                   </Center>
-                ) : notifications.length === 0 ? (
+                ) : !notifications || notifications.length === 0 ? (
                   <Center py={8}>
                     <VStack gap={3}>
                       <Circle size='16' bg='orange.50'>
@@ -260,50 +245,61 @@ export default function LecturerDashboard() {
                     </VStack>
                   </Center>
                 ) : (
-                  notifications.slice(0, 5).map((notification) => (
-                    <Box
-                      key={notification.id}
-                      p={4}
-                      bg={notification.is_read ? 'gray.50' : 'orange.50'}
-                      borderRadius='xl'
-                      borderLeft='4px solid'
-                      borderLeftColor='#dd7323'
-                      cursor='pointer'
-                      _hover={{ bg: notification.is_read ? 'gray.100' : 'orange.100', transform: 'translateX(4px)' }}
-                      transition='all 0.2s'
-                    >
-                      <HStack gap={3} align='flex-start'>
-                        <Circle size='10' bg='orange.100' flexShrink={0}>
-                          <Megaphone size={18} color='#dd7323' />
-                        </Circle>
-                        <VStack align='flex-start' gap={1} flex={1} minW={0}>
-                          <HStack gap={2} flexWrap='wrap'>
-                            <Text fontWeight='semibold' fontSize='sm' color='gray.800' lineClamp={1}>
-                              {notification.title}
+                  notifications.slice(0, 5).map((notification: any) => {
+                    const isRead = notification.is_read || notification.isRead
+                    const createdAt = notification.created_at || notification.createdAt
+                    return (
+                      <Box
+                        key={notification.id}
+                        p={4}
+                        bg={isRead ? 'gray.50' : 'orange.50'}
+                        borderRadius='xl'
+                        borderLeft='4px solid'
+                        borderLeftColor='#dd7323'
+                        cursor='pointer'
+                        _hover={{ bg: isRead ? 'gray.100' : 'orange.100', transform: 'translateX(4px)' }}
+                        transition='all 0.2s'
+                      >
+                        <HStack gap={3} align='flex-start'>
+                          <Circle size='10' bg='orange.100' flexShrink={0}>
+                            <Megaphone size={18} color='#dd7323' />
+                          </Circle>
+                          <VStack align='flex-start' gap={1} flex={1} minW={0}>
+                            <HStack gap={2} flexWrap='wrap'>
+                              <Text fontWeight='semibold' fontSize='sm' color='gray.800' lineClamp={1}>
+                                {notification.title}
+                              </Text>
+                              {!isRead && (
+                                <Badge bg='#dd7323' color='white' size='sm' borderRadius='full'>
+                                  Mới
+                                </Badge>
+                              )}
+                            </HStack>
+                            <Text fontSize='sm' color='gray.600' lineClamp={2}>
+                              {notification.content}
                             </Text>
-                            {!notification.is_read && (
-                              <Badge bg='#dd7323' color='white' size='sm' borderRadius='full'>
-                                Mới
-                              </Badge>
-                            )}
-                          </HStack>
-                          <Text fontSize='sm' color='gray.600' lineClamp={2}>
-                            {notification.content}
-                          </Text>
-                          <Text fontSize='xs' color='gray.500'>
-                            {getRelativeTime(notification.created_at)}
-                          </Text>
-                        </VStack>
-                      </HStack>
-                    </Box>
-                  ))
+                            <Text fontSize='xs' color='gray.500'>
+                              {createdAt ? getRelativeTime(createdAt) : ''}
+                            </Text>
+                          </VStack>
+                        </HStack>
+                      </Box>
+                    )
+                  })
                 )}
               </VStack>
             </Card.Body>
           </Card.Root>
 
           {/* Right Column - Mini Calendar */}
-          <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.100' shadow='sm' height='fit-content'>
+          <Card.Root
+            bg='white'
+            borderRadius='xl'
+            border='1px solid'
+            borderColor='orange.100'
+            shadow='sm'
+            height='fit-content'
+          >
             <Card.Header pb={2} pt={5} px={6}>
               <HStack justify='space-between'>
                 <HStack gap={3}>

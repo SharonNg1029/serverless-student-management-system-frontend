@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Box, Text, VStack, HStack, Spinner, Card, Avatar, Badge, Button } from '@chakra-ui/react'
-import { MessageSquare, Heart, Pin, ChevronDown, ChevronUp, Plus, Download, File } from 'lucide-react'
+import { MessageSquare, Heart, Pin, ChevronDown, ChevronUp, Plus, Download, File, XCircle } from 'lucide-react'
+import { toaster } from '../ui/toaster'
 import ReactMarkdown from 'react-markdown'
 import StatsCard from '../ui/StatsCard'
 import EmptyState from '../ui/EmptyState'
@@ -14,8 +15,19 @@ interface PostTabProps {
   classId: string
 }
 
+function formatDateTime(dateStr: string): string {
+  const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return ''
+  return (
+    date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+    ' · ' +
+    date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+  )
+}
+
 function getRelativeTime(dateStr: string): string {
   const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return ''
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMins = Math.floor(diffMs / (1000 * 60))
@@ -27,9 +39,7 @@ function getRelativeTime(dateStr: string): string {
   if (diffHours < 24) return `${diffHours} giờ trước`
   if (diffDays === 1) return 'Hôm qua'
   if (diffDays < 7) return `${diffDays} ngày trước`
-  return (
-    date.toLocaleDateString('vi-VN') + ' · ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
-  )
+  return formatDateTime(dateStr)
 }
 
 export default function LecturerPostTab({ classId }: PostTabProps) {
@@ -74,6 +84,7 @@ export default function LecturerPostTab({ classId }: PostTabProps) {
 
   const handleCreatePost = async (data: PostFormData) => {
     await lecturerPostApi.createPost(classId, {
+      class_id: parseInt(classId) || 0,
       title: data.title,
       content: data.content,
       is_pinned: data.is_pinned,
@@ -125,7 +136,7 @@ export default function LecturerPostTab({ classId }: PostTabProps) {
       ) : (
         <VStack gap={4} align='stretch'>
           {sortedPosts.map((post) => (
-            <PostCard key={post.id} post={post} />
+            <PostCard key={post.id} post={post} classId={classId} onDeleted={fetchPosts} />
           ))}
         </VStack>
       )}
@@ -142,10 +153,45 @@ export default function LecturerPostTab({ classId }: PostTabProps) {
 }
 
 // Post Card Component
-function PostCard({ post }: { post: PostDTO }) {
+interface PostCardProps {
+  post: PostDTO
+  classId: string
+  onDeleted: () => void
+}
+
+function PostCard({ post, classId, onDeleted }: PostCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const contentPreview = post.content.length > 300 ? post.content.slice(0, 300) + '...' : post.content
   const needsExpand = post.content.length > 300
+
+  const handleClosePost = async () => {
+    if (
+      !confirm(
+        'Bạn có chắc muốn đóng bài viết này? Nếu không có bình luận, bài viết sẽ bị xóa. Nếu có bình luận, bài viết sẽ bị ẩn.'
+      )
+    )
+      return
+
+    setDeleting(true)
+    try {
+      await lecturerPostApi.deletePost(String(post.id), classId)
+      toaster.create({
+        title: 'Đã đóng bài viết',
+        type: 'success'
+      })
+      onDeleted()
+    } catch (err: any) {
+      console.error('Failed to close post:', err)
+      toaster.create({
+        title: 'Lỗi',
+        description: err.message || 'Không thể đóng bài viết',
+        type: 'error'
+      })
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   return (
     <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.200' shadow='sm' overflow='hidden'>
@@ -159,10 +205,10 @@ function PostCard({ post }: { post: PostDTO }) {
             </Avatar.Root>
             <VStack align='flex-start' gap={0}>
               <Text fontWeight='semibold' color='gray.800'>
-                {post.lecturer_name}
+                {post.lecturer_name || 'Giảng viên'}
               </Text>
               <Text fontSize='sm' color='gray.500'>
-                {getRelativeTime(post.created_at)}
+                {formatDateTime(post.created_at)} ({getRelativeTime(post.created_at)})
               </Text>
             </VStack>
           </HStack>
@@ -241,14 +287,27 @@ function PostCard({ post }: { post: PostDTO }) {
         )}
 
         {/* Actions */}
-        <HStack gap={4} pt={4} borderTop='1px solid' borderColor='gray.100'>
-          <Button variant='ghost' size='sm' color='gray.600' _hover={{ bg: 'red.50', color: 'red.500' }}>
-            <Heart size={18} />
-            <Text ml={1}>{post.like_count}</Text>
-          </Button>
-          <Button variant='ghost' size='sm' color='gray.600' _hover={{ bg: 'gray.100' }}>
-            <MessageSquare size={18} />
-            <Text ml={1}>{post.comment_count}</Text>
+        <HStack gap={4} pt={4} borderTop='1px solid' borderColor='gray.100' justify='space-between'>
+          <HStack gap={4}>
+            <Button variant='ghost' size='sm' color='gray.600' _hover={{ bg: 'red.50', color: 'red.500' }}>
+              <Heart size={18} />
+              <Text ml={1}>{post.like_count}</Text>
+            </Button>
+            <Button variant='ghost' size='sm' color='gray.600' _hover={{ bg: 'gray.100' }}>
+              <MessageSquare size={18} />
+              <Text ml={1}>{post.comment_count}</Text>
+            </Button>
+          </HStack>
+          <Button
+            variant='ghost'
+            size='sm'
+            color='red.500'
+            _hover={{ bg: 'red.50' }}
+            onClick={handleClosePost}
+            loading={deleting}
+          >
+            <XCircle size={16} />
+            <Text ml={1}>Đóng bài viết</Text>
           </Button>
         </HStack>
       </Card.Body>

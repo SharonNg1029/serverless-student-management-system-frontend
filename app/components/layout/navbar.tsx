@@ -131,7 +131,8 @@ export default function Navbar() {
       case 'Student':
         return [
           { label: 'Home', href: '/home' },
-          { label: 'My Courses', href: '/student/my-courses' }
+          { label: 'My Courses', href: '/student/my-courses' },
+          { label: 'Thông báo', href: '/student/notifications-receive' }
         ]
 
       default:

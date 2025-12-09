@@ -2,7 +2,7 @@
 
 import { useNavigate } from 'react-router'
 import { Avatar, Menu, Portal, Float, Circle, Box, Skeleton, HStack, Stack, Text } from '@chakra-ui/react'
-import { User, ScrollText, LogOut, BookOpen, Settings, CalendarDays } from 'lucide-react'
+import { User, LogOut, BookOpen, Settings, CalendarDays } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { toaster } from '../ui/toaster'
 
@@ -43,8 +43,7 @@ export default function UserMenu({ variant }: UserMenuProps) {
         return [
           { value: 'profile', label: 'Profile', icon: <User size={18} />, path: '/profile' },
           { value: 'my-courses', label: 'My Courses', icon: <BookOpen size={18} />, path: '/student/my-courses' },
-          { value: 'calendar', label: 'Deadline Calendar', icon: <CalendarDays size={18} />, path: '/student/calendar' },
-          { value: 'ranking', label: 'Ranking', icon: <ScrollText size={18} />, path: '/student/ranking' }
+          { value: 'calendar', label: 'Deadline Calendar', icon: <CalendarDays size={18} />, path: '/student/calendar' }
         ]
       case 'Lecturer':
         return [
@@ -70,9 +69,8 @@ export default function UserMenu({ variant }: UserMenuProps) {
         duration: 2000
       })
 
-      setTimeout(() => {
-        navigate('/login', { replace: true })
-      }, 500)
+      // Redirect ngay lập tức về trang login
+      window.location.href = '/login'
     } catch (error: any) {
       toaster.create({
         title: 'Logout failed',
@@ -80,6 +78,8 @@ export default function UserMenu({ variant }: UserMenuProps) {
         type: 'error',
         duration: 3000
       })
+      // Vẫn redirect về login ngay cả khi có lỗi
+      window.location.href = '/login'
     }
   }
 
@@ -118,9 +118,7 @@ export default function UserMenu({ variant }: UserMenuProps) {
           transition: 'all 0.2s ease'
         }}
         onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-          e.currentTarget.style.backgroundColor = isDark
-            ? 'rgba(227, 130, 20, 0.1)'
-            : 'rgba(241, 245, 249, 0.8)'
+          e.currentTarget.style.backgroundColor = isDark ? 'rgba(227, 130, 20, 0.1)' : 'rgba(241, 245, 249, 0.8)'
         }}
         onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
           e.currentTarget.style.backgroundColor = 'transparent'
@@ -128,30 +126,12 @@ export default function UserMenu({ variant }: UserMenuProps) {
       >
         <button>
           {/* User Info */}
-          <Box
-            textAlign='right'
-            display={{ base: 'none', sm: 'flex' }}
-            flexDirection='column'
-            alignItems='flex-end'
-          >
-            <Text
-              fontSize='14px'
-              fontWeight='700'
-              color={isDark ? '#ffffff' : '#1e293b'}
-              lineHeight='1.2'
-            >
+          <Box textAlign='right' display={{ base: 'none', sm: 'flex' }} flexDirection='column' alignItems='flex-end'>
+            <Text fontSize='14px' fontWeight='700' color={isDark ? '#ffffff' : '#1e293b'} lineHeight='1.2'>
               {user.fullName || user.username || 'User'}
             </Text>
-            <Text
-              fontSize='12px'
-              color={isDark ? '#94a3b8' : '#64748b'}
-              marginTop='2px'
-            >
-              {user.role === 'Admin'
-                ? 'Administrator'
-                : user.role === 'Lecturer'
-                  ? 'Lecturer'
-                  : 'Student'}
+            <Text fontSize='12px' color={isDark ? '#94a3b8' : '#64748b'} marginTop='2px'>
+              {user.role === 'Admin' ? 'Administrator' : user.role === 'Lecturer' ? 'Lecturer' : 'Student'}
             </Text>
           </Box>
 
@@ -162,12 +142,7 @@ export default function UserMenu({ variant }: UserMenuProps) {
             </Avatar.Fallback>
             {user.avatar && <Avatar.Image src={user.avatar} alt={user.fullName} />}
             <Float placement='bottom-end' offsetX='1' offsetY='1'>
-              <Circle
-                bg='green.500'
-                size='10px'
-                outline='2px solid'
-                outlineColor={isDark ? '#293548' : 'white'}
-              />
+              <Circle bg='green.500' size='10px' outline='2px solid' outlineColor={isDark ? '#293548' : 'white'} />
             </Float>
           </Avatar.Root>
         </button>

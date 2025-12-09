@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { useAuthStore } from '../../store/authStore'
@@ -38,7 +38,16 @@ const normalizeRole = (role?: string | null): 'Student' | 'Lecturer' | 'Admin' =
 
 export default function LoginRoute() {
   const navigate = useNavigate()
-  const { loginWithCognito, loginWithGoogle, confirmNewPassword, setLoading, isLoading, updateUser } = useAuthStore()
+  const {
+    loginWithCognito,
+    loginWithGoogle,
+    confirmNewPassword,
+    setLoading,
+    isLoading,
+    updateUser,
+    isAuthenticated,
+    user
+  } = useAuthStore()
   const [showPassword, setShowPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -59,6 +68,34 @@ export default function LoginRoute() {
         return '/home'
     }
   }
+
+  // Kiểm tra nếu đã đăng nhập thì redirect về dashboard
+  useEffect(() => {
+    // Kiểm tra trong localStorage xem có auth-storage không
+    const authStorage = localStorage.getItem('auth-storage')
+    if (authStorage) {
+      try {
+        const parsed = JSON.parse(authStorage)
+        const storedUser = parsed?.state?.user
+        const storedIsAuth = parsed?.state?.isAuthenticated
+
+        if (storedIsAuth && storedUser?.role) {
+          // Đã đăng nhập, redirect về dashboard theo role
+          const redirectPath = getRedirectPathByRole(storedUser.role)
+          navigate(redirectPath, { replace: true })
+          return
+        }
+      } catch (e) {
+        // Ignore parse error
+      }
+    }
+
+    // Hoặc kiểm tra từ store
+    if (isAuthenticated && user?.role) {
+      const redirectPath = getRedirectPathByRole(user.role)
+      navigate(redirectPath, { replace: true })
+    }
+  }, [isAuthenticated, user, navigate])
 
   // Fetch user profile từ API và cập nhật store
   const fetchUserProfile = async (): Promise<string | null> => {

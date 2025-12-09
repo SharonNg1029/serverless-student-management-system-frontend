@@ -2,68 +2,23 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router'
-import { Box, Tabs, VStack, HStack, Text, Spinner, Card, Circle, Badge } from '@chakra-ui/react'
-import { FileText, MessageSquare, ChevronLeft } from 'lucide-react'
+import { Box, Tabs, VStack, HStack, Text, Spinner, Card, Button, Input, Field } from '@chakra-ui/react'
+import { FileText, MessageSquare, ChevronLeft, UserPlus, Lock, BookOpen, Users } from 'lucide-react'
 import PageHeader from '../../components/ui/PageHeader'
 import { AssignmentTab, PostTab } from '../../components/course'
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay'
+import { studentClassApi } from '../../services/studentApi'
+import { toaster } from '../../components/ui/toaster'
 import api from '../../utils/axios'
 
-// ============================================
-// MOCK DATA - Set to false to use real API
-// ============================================
-const USE_MOCK_DATA = false
-
-const MOCK_CLASS_INFO: Record<string, ClassInfo> = {
-  'CS101-01': {
-    id: 1,
-    name: 'CS101-01',
-    subject_name: 'Nhập môn lập trình',
-    teacher_name: 'Nguyễn Văn An',
-    semester: 'HK1',
-    academic_year: '2024-2025'
-  },
-  'CS201-02': {
-    id: 2,
-    name: 'CS201-02',
-    subject_name: 'Cấu trúc dữ liệu và giải thuật',
-    teacher_name: 'Trần Thị Bình',
-    semester: 'HK1',
-    academic_year: '2024-2025'
-  },
-  'CS301-01': {
-    id: 3,
-    name: 'CS301-01',
-    subject_name: 'Cơ sở dữ liệu',
-    teacher_name: 'Lê Hoàng Cường',
-    semester: 'HK1',
-    academic_year: '2024-2025'
-  },
-  'CS401-03': {
-    id: 4,
-    name: 'CS401-03',
-    subject_name: 'Phát triển ứng dụng Web',
-    teacher_name: 'Phạm Minh Đức',
-    semester: 'HK1',
-    academic_year: '2024-2025'
-  },
-  'CS501-01': {
-    id: 5,
-    name: 'CS501-01',
-    subject_name: 'Trí tuệ nhân tạo',
-    teacher_name: 'Hoàng Thị Lan',
-    semester: 'HK1',
-    academic_year: '2024-2025'
-  }
-}
-
 interface ClassInfo {
-  id: number
+  id: string
   name: string
   subject_name: string
   teacher_name: string
   semester: string
   academic_year: string
+  student_count?: number
 }
 
 export default function CourseDetailsRoute() {
@@ -71,50 +26,126 @@ export default function CourseDetailsRoute() {
   const navigate = useNavigate()
   const [classInfo, setClassInfo] = useState<ClassInfo | null>(null)
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>('assignments')
 
-  const fetchClassInfo = useCallback(async () => {
-    if (!classId) return
-    setLoading(true)
-    setError(null)
+  // Enrollment state
+  const [isEnrolled, setIsEnrolled] = useState<boolean | null>(null)
+  const [enrollPassword, setEnrollPassword] = useState('')
+  const [enrolling, setEnrolling] = useState(false)
 
-    // Use mock data for UI testing
-    if (USE_MOCK_DATA) {
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      const mockData = MOCK_CLASS_INFO[classId] || {
-        id: 1,
-        name: classId,
-        subject_name: 'Môn học mẫu',
-        teacher_name: 'Giảng viên mẫu',
-        semester: 'HK1',
-        academic_year: '2024-2025'
-      }
-      setClassInfo(mockData)
-      setLoading(false)
-      return
-    }
+  // Check if student is enrolled in this class
+  const checkEnrollment = useCallback(async () => {
+    if (!classId) return
 
     try {
-      // Try to get class info from student API
-      const response = await api.get(`/api/student/classes/${classId}`)
-      console.log('Class info response:', response.data)
+      console.log('=== CHECK ENROLLMENT ===')
+      console.log('Checking enrollment for classId:', classId)
 
-      // Handle different response formats
-      const data = response.data?.data || response.data?.result || response.data
-      if (data) {
+      // Gọi API với class_id cụ thể để kiểm tra enrollment
+      const enrolledClasses = await studentClassApi.getEnrolledClasses(classId)
+      console.log('Enrolled classes response for classId:', classId, enrolledClasses)
+
+      // Nếu API trả về rỗng hoặc không có kết quả => chưa enrolled
+      if (!enrolledClasses || enrolledClasses.length === 0) {
+        console.log('No enrollment found for classId:', classId)
+        setIsEnrolled(false)
+        return
+      }
+
+      // Nếu gọi API với class_id cụ thể và có kết quả => đã enrolled
+      // Lấy class đầu tiên từ kết quả (vì đã filter theo class_id)
+      const foundClass = enrolledClasses[0] as any
+      console.log('Found class (first result):', foundClass)
+
+      // Double check: verify class ID matches (handle cả snake_case và camelCase)
+      const cId = foundClass.class_id || foundClass.classId || foundClass.id || ''
+      const normalizedCId = cId.replace('CLASS#', '')
+      const normalizedClassId = classId.replace('CLASS#', '')
+
+      const isMatch =
+        cId === classId ||
+        cId === `CLASS#${classId}` ||
+        normalizedCId === classId ||
+        normalizedCId === normalizedClassId
+
+      console.log('Class ID match check:', { cId, classId, normalizedCId, normalizedClassId, isMatch })
+
+      if (isMatch || enrolledClasses.length === 1) {
+        // Nếu match hoặc chỉ có 1 kết quả (BE đã filter) => enrolled
+        setIsEnrolled(true)
         setClassInfo({
-          id: data.id || 0,
-          name: data.name || data.title || classId,
-          subject_name: data.subject_name || data.subjectName || data.subtitle || '',
-          teacher_name: data.teacher_name || data.teacherName || data.lecturerName || '',
-          semester: data.semester || '',
-          academic_year: data.academic_year || data.academicYear || ''
+          id: foundClass.class_id || foundClass.classId || foundClass.id || classId,
+          name: foundClass.name || foundClass.className || classId,
+          subject_name: foundClass.subjectName || foundClass.subject_name || '',
+          teacher_name: foundClass.lecturerName || foundClass.lecturer_name || foundClass.teacherName || '',
+          semester: foundClass.semester || '',
+          academic_year: foundClass.academic_year || foundClass.academicYear || '',
+          student_count: foundClass.student_count || foundClass.studentCount
         })
       } else {
-        // Fallback: use classId as name if no data returned
+        // Nếu có nhiều kết quả nhưng không match => tìm trong list
+        const matchedClass = enrolledClasses.find((c: any) => {
+          const id = c.class_id || c.classId || c.id || ''
+          return id.replace('CLASS#', '') === normalizedClassId
+        })
+
+        if (matchedClass) {
+          setIsEnrolled(true)
+          setClassInfo({
+            id: (matchedClass as any).class_id || (matchedClass as any).classId || (matchedClass as any).id || classId,
+            name: (matchedClass as any).name || classId,
+            subject_name: (matchedClass as any).subjectName || '',
+            teacher_name: (matchedClass as any).lecturerName || '',
+            semester: (matchedClass as any).semester || '',
+            academic_year: (matchedClass as any).academic_year || (matchedClass as any).academicYear || '',
+            student_count: (matchedClass as any).student_count || (matchedClass as any).studentCount
+          })
+        } else {
+          setIsEnrolled(false)
+        }
+      }
+
+      console.log('=== END CHECK ENROLLMENT ===')
+    } catch (err: any) {
+      console.error('=== ENROLLMENT CHECK ERROR ===')
+      console.error('Failed to check enrollment:', err)
+      console.error('Error response:', err.response?.data)
+      console.error('Error status:', err.response?.status)
+      // Nếu lỗi, coi như chưa enrolled
+      setIsEnrolled(false)
+    }
+  }, [classId])
+
+  // Fetch class info (for non-enrolled view)
+  const fetchClassInfo = useCallback(async () => {
+    if (!classId) return
+
+    try {
+      // Try to get class info from search or public API
+      const response = await api.get(`/api/search`, {
+        params: { type: 'classes', keyword: classId }
+      })
+      console.log('Class search response:', response.data)
+
+      const results = Array.isArray(response.data) ? response.data : response.data?.data || []
+      const foundClass = results.find(
+        (c: any) => c.id === classId || c.id === `CLASS#${classId}` || c.id?.replace('CLASS#', '') === classId
+      )
+
+      if (foundClass) {
         setClassInfo({
-          id: 0,
+          id: foundClass.id,
+          name: foundClass.title || classId,
+          subject_name: foundClass.subtitle || '',
+          teacher_name: foundClass.extraInfo || '',
+          semester: '',
+          academic_year: ''
+        })
+      } else {
+        // Fallback
+        setClassInfo({
+          id: classId,
           name: classId,
           subject_name: '',
           teacher_name: '',
@@ -124,39 +155,208 @@ export default function CourseDetailsRoute() {
       }
     } catch (err) {
       console.error('Failed to fetch class info:', err)
-      // Don't show error, just use classId as fallback
       setClassInfo({
-        id: 0,
+        id: classId,
         name: classId,
         subject_name: '',
         teacher_name: '',
         semester: '',
         academic_year: ''
       })
-    } finally {
-      setLoading(false)
     }
   }, [classId])
 
+  // Main effect: check enrollment first
   useEffect(() => {
-    fetchClassInfo()
-  }, [fetchClassInfo])
+    const init = async () => {
+      setLoading(true)
+      await checkEnrollment()
+      setLoading(false)
+    }
+    init()
+  }, [checkEnrollment])
+
+  // Fetch class info if not enrolled
+  useEffect(() => {
+    if (isEnrolled === false && !classInfo) {
+      fetchClassInfo()
+    }
+  }, [isEnrolled, classInfo, fetchClassInfo])
+
+  // Handle enroll
+  const handleEnroll = async () => {
+    if (!classId || !enrollPassword.trim()) {
+      toaster.create({
+        title: 'Lỗi',
+        description: 'Vui lòng nhập mật khẩu lớp học',
+        type: 'error'
+      })
+      return
+    }
+
+    try {
+      setEnrolling(true)
+      // Gọi API enroll với classId và password
+      await studentClassApi.enroll(classId, enrollPassword)
+
+      toaster.create({
+        title: 'Thành công',
+        description: 'Đã đăng ký vào lớp học',
+        type: 'success'
+      })
+
+      // Re-check enrollment to refresh UI
+      setIsEnrolled(null)
+      await checkEnrollment()
+      setIsEnrolled(true)
+    } catch (err: any) {
+      console.error('Failed to enroll:', err)
+      toaster.create({
+        title: 'Lỗi',
+        description: err.response?.data?.message || 'Không thể đăng ký vào lớp học. Kiểm tra lại mật khẩu.',
+        type: 'error'
+      })
+    } finally {
+      setEnrolling(false)
+    }
+  }
 
   if (loading) {
     return (
       <Box minH='60vh' display='flex' alignItems='center' justifyContent='center' bg='white'>
         <VStack gap={3}>
           <Spinner size='xl' color='#dd7323' borderWidth='4px' />
-          <Text color='gray.600'>Đang tải thông tin lớp học...</Text>
+          <Text color='gray.600'>Đang kiểm tra thông tin lớp học...</Text>
         </VStack>
       </Box>
     )
   }
 
   if (error) {
-    return <ErrorDisplay variant='fetch' message={error} onRetry={fetchClassInfo} />
+    return <ErrorDisplay variant='fetch' message={error} onRetry={checkEnrollment} />
   }
 
+  // Not enrolled - show enroll UI
+  if (isEnrolled === false) {
+    return (
+      <Box w='full' py={8} px={{ base: 4, sm: 6, lg: 8 }} bg='gray.50' minH='100vh'>
+        <Box maxW='2xl' mx='auto'>
+          {/* Back Button */}
+          <HStack
+            mb={6}
+            gap={2}
+            cursor='pointer'
+            color='gray.600'
+            _hover={{ color: '#dd7323' }}
+            onClick={() => navigate(-1)}
+            w='fit-content'
+          >
+            <ChevronLeft size={20} />
+            <Text fontWeight='medium'>Quay lại</Text>
+          </HStack>
+
+          {/* Enroll Card */}
+          <Card.Root bg='white' borderRadius='2xl' shadow='lg' overflow='hidden'>
+            {/* Header with gradient */}
+            <Box h='120px' bg='linear-gradient(135deg, #dd7323 0%, #f59e0b 100%)' position='relative'>
+              <Box
+                position='absolute'
+                bottom='-30px'
+                left='50%'
+                transform='translateX(-50%)'
+                w='70px'
+                h='70px'
+                bg='white'
+                borderRadius='xl'
+                display='flex'
+                alignItems='center'
+                justifyContent='center'
+                shadow='lg'
+              >
+                <BookOpen size={32} color='#dd7323' />
+              </Box>
+            </Box>
+
+            <Card.Body pt={12} pb={8} px={8}>
+              <VStack gap={6} align='stretch'>
+                {/* Class Info */}
+                <VStack gap={2}>
+                  <Text fontSize='2xl' fontWeight='bold' color='gray.800' textAlign='center'>
+                    {classInfo?.name || classId}
+                  </Text>
+                  {classInfo?.subject_name && (
+                    <Text fontSize='lg' color='gray.600' textAlign='center'>
+                      {classInfo.subject_name}
+                    </Text>
+                  )}
+                  {classInfo?.teacher_name && (
+                    <HStack justify='center' gap={2} color='gray.500'>
+                      <Users size={16} />
+                      <Text fontSize='sm'>GV: {classInfo.teacher_name}</Text>
+                    </HStack>
+                  )}
+                </VStack>
+
+                {/* Info Box */}
+                <Box p={4} bg='orange.50' borderRadius='xl'>
+                  <VStack gap={2} align='stretch'>
+                    <HStack gap={2}>
+                      <Lock size={18} color='#dd7323' />
+                      <Text fontWeight='medium' color='gray.700'>
+                        Lớp học yêu cầu mật khẩu để đăng ký
+                      </Text>
+                    </HStack>
+                    <Text fontSize='sm' color='gray.600'>
+                      Liên hệ giảng viên để nhận mật khẩu lớp học
+                    </Text>
+                  </VStack>
+                </Box>
+
+                {/* Password Input */}
+                <Field.Root>
+                  <Field.Label fontWeight='medium' color='gray.700'>
+                    Mật khẩu lớp học
+                  </Field.Label>
+                  <Input
+                    type='password'
+                    placeholder='Nhập mật khẩu lớp học...'
+                    value={enrollPassword}
+                    onChange={(e) => setEnrollPassword(e.target.value)}
+                    borderColor='gray.200'
+                    borderRadius='xl'
+                    _focus={{ borderColor: '#dd7323', boxShadow: '0 0 0 1px #dd7323' }}
+                    onKeyDown={(e) => e.key === 'Enter' && handleEnroll()}
+                  />
+                </Field.Root>
+
+                {/* Enroll Button */}
+                <Button
+                  bg='#dd7323'
+                  color='white'
+                  size='lg'
+                  borderRadius='xl'
+                  _hover={{ bg: '#c5651f' }}
+                  onClick={handleEnroll}
+                  disabled={enrolling || !enrollPassword.trim()}
+                >
+                  {enrolling ? (
+                    <Spinner size='sm' />
+                  ) : (
+                    <>
+                      <UserPlus size={20} />
+                      <Text ml={2}>Đăng ký vào lớp</Text>
+                    </>
+                  )}
+                </Button>
+              </VStack>
+            </Card.Body>
+          </Card.Root>
+        </Box>
+      </Box>
+    )
+  }
+
+  // Enrolled - show class detail UI
   return (
     <Box w='full' py={8} px={{ base: 4, sm: 6, lg: 8 }} bg='white' minH='100vh'>
       <Box maxW='6xl' mx='auto'>

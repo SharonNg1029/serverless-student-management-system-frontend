@@ -3,18 +3,22 @@ import { Bell } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import { useNotificationUIStore } from '../../store/notificationUIStore'
 import api from '../../utils/axios'
+import { fetchAuthSession } from '@aws-amplify/auth'
 
 // ============================================
 // API Response Type - Đã cập nhật theo response thực tế từ BE
 // Response: { "results": [{ id, title, content, type, isRead, createdAt }] }
+// hoặc { "data": [...], count, message, status } cho student API
 // ============================================
 interface NotificationFromAPI {
   id: string
   title: string
   content: string
-  type: string // "SYSTEM_ALERT", "INFO", etc.
+  type: string // "SYSTEM_ALERT", "INFO", "CLASS", "SYSTEM", etc.
   isRead: boolean // camelCase
   createdAt: string // camelCase
+  className?: string
+  classId?: string
 }
 
 interface Notification {
@@ -35,13 +39,16 @@ const POLLING_INTERVAL = 30000
 
 // Map BE type to UI type
 const mapNotificationType = (type?: string): 'info' | 'warning' | 'success' | 'error' => {
-  switch (type) {
+  switch (type?.toUpperCase()) {
     case 'SYSTEM_ALERT':
+    case 'SYSTEM':
       return 'warning'
     case 'ERROR':
       return 'error'
     case 'SUCCESS':
       return 'success'
+    case 'CLASS':
+    case 'INFO':
     default:
       return 'info'
   }
@@ -60,18 +67,61 @@ export default function NotificationBell({ variant }: NotificationBellProps) {
   const isDark = effectiveVariant === 'dark'
 
   // ============================================
-  // FETCH NOTIFICATIONS - Gọi API /api/notifications
+  // FETCH NOTIFICATIONS
+  // Student: GET /api/student/notifications?type=system|class
+  // Lecturer/Admin: GET /api/notifications
   // ============================================
   const fetchNotifications = useCallback(async () => {
     if (!user) return
 
     try {
       setIsLoading(true)
-      // === GỌI API GET /api/notifications ===
-      const response = await api.get<{ results: NotificationFromAPI[] }>('/api/notifications')
+
+      let allNotifications: NotificationFromAPI[] = []
+
+      if (user.role === 'Student') {
+        // === Student: Gọi 2 API để lấy system và class notifications ===
+        const [systemResponse, classResponse] = await Promise.all([
+          api.get('/api/student/notifications', { params: { type: 'system' } }),
+          api.get('/api/student/notifications', { params: { type: 'class' } })
+        ])
+
+        // BE trả về { data: [...], count, message, status }
+        const systemNotis = (systemResponse.data as any)?.data || systemResponse.data?.results || []
+        const classNotis = (classResponse.data as any)?.data || classResponse.data?.results || []
+
+        allNotifications = [...systemNotis, ...classNotis]
+      } else {
+        // === Lecturer/Admin: Gọi API /api/notifications với header đặc biệt ===
+        // API này yêu cầu cả Authorization và user-idToken đều dùng idToken
+        const session = await fetchAuthSession()
+        const idToken = session.tokens?.idToken?.toString()
+
+        if (!idToken) {
+          throw new Error('Không tìm thấy token xác thực')
+        }
+
+        const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+        const response = await fetch(`${baseUrl}/api/notifications`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`,
+            'user-idToken': idToken
+          }
+        })
+
+        if (!response.ok) {
+          throw new Error('Lỗi khi lấy thông báo')
+        }
+
+        const data = await response.json()
+        // BE trả về { data: [...], count, message, status }
+        allNotifications = data.data || data.results || []
+      }
 
       // Map API response to local format
-      const mappedNotifications: Notification[] = (response.data.results || []).map((n) => ({
+      const mappedNotifications: Notification[] = allNotifications.map((n) => ({
         id: String(n.id),
         title: n.title || 'Thông báo',
         message: n.content || '',
@@ -83,6 +133,7 @@ export default function NotificationBell({ variant }: NotificationBellProps) {
       setNotifications(mappedNotifications)
     } catch (error) {
       // Silently fail - notifications are not critical
+      console.error('Failed to fetch notifications:', error)
     } finally {
       setIsLoading(false)
     }

@@ -18,7 +18,7 @@ interface TableListProps<T> {
   onSearch?: (term: string) => void
   onEdit?: (item: T) => void
   onDelete?: (item: T) => void
-  deleteLabel?: string
+  deleteLabel?: string | ((item: T) => string) // Hỗ trợ cả string và function
   isLoading?: boolean
 }
 
@@ -150,41 +150,45 @@ function TableList<T extends { id: string | number }>({
                         {col.render ? col.render(row) : (row as any)[col.accessor]}
                       </td>
                     ))}
-                    <td className='py-4 px-6 text-right relative'>
-                      <button
-                        onClick={() => toggleMenu(row.id)}
-                        className='p-2 text-slate-400 hover:text-[#dd7323] hover:bg-orange-50 rounded-lg transition-colors'
-                      >
-                        <MoreVertical size={18} />
-                      </button>
-
-                      {/* Dropdown Menu */}
-                      {openMenuId === row.id && (
-                        <div
-                          ref={menuRef}
-                          className='absolute right-6 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl z-50 min-w-[160px] py-2 animate-in fade-in slide-in-from-top-2 duration-200'
+                    <td className='py-4 px-6 text-right'>
+                      <div className='relative inline-block'>
+                        <button
+                          onClick={() => toggleMenu(row.id)}
+                          className='p-2 text-slate-400 hover:text-[#dd7323] hover:bg-orange-50 rounded-lg transition-colors'
                         >
-                          {onEdit && (
-                            <button
-                              onClick={() => handleEdit(row)}
-                              className='w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors'
-                            >
-                              <Edit size={16} className='text-slate-500' />
-                              <span className='font-medium'>Cập nhật</span>
-                            </button>
-                          )}
-                          {onEdit && onDelete && <div className='my-1 border-t border-slate-100' />}
-                          {onDelete && (
-                            <button
-                              onClick={() => handleDelete(row)}
-                              className='w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors'
-                            >
-                              <Ban size={16} />
-                              <span className='font-medium'>{deleteLabel}</span>
-                            </button>
-                          )}
-                        </div>
-                      )}
+                          <MoreVertical size={18} />
+                        </button>
+
+                        {/* Dropdown Menu - hiện bên trái của button */}
+                        {openMenuId === row.id && (
+                          <div
+                            ref={menuRef}
+                            className='absolute right-full top-0 mr-2 bg-white border border-slate-200 rounded-xl shadow-xl z-[100] min-w-[160px] py-2 animate-in fade-in slide-in-from-right-2 duration-200'
+                          >
+                            {onEdit && (
+                              <button
+                                onClick={() => handleEdit(row)}
+                                className='w-full px-4 py-2.5 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors'
+                              >
+                                <Edit size={16} className='text-slate-500' />
+                                <span className='font-medium'>Cập nhật</span>
+                              </button>
+                            )}
+                            {onEdit && onDelete && <div className='my-1 border-t border-slate-100' />}
+                            {onDelete && (
+                              <button
+                                onClick={() => handleDelete(row)}
+                                className='w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors'
+                              >
+                                <Ban size={16} />
+                                <span className='font-medium'>
+                                  {typeof deleteLabel === 'function' ? deleteLabel(row) : deleteLabel}
+                                </span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

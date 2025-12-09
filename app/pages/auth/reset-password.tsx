@@ -174,7 +174,7 @@ export default function ResetPasswordRoute() {
                 {isLoading ? 'Đang gửi...' : 'Gửi mã xác nhận'}
               </button>
 
-              <button type='button' className='btn-back' onClick={() => navigate('/auth/login')}>
+              <button type='button' className='btn-back' onClick={() => navigate('/login')}>
                 Quay lại đăng nhập
               </button>
             </form>

@@ -1,4 +1,5 @@
 import api from '../utils/axios'
+import { fetchAuthSession } from '@aws-amplify/auth'
 import type {
   ClassDTO,
   CreateClassRequest,
@@ -49,11 +50,50 @@ const ASSIGNMENT_WEIGHTS: Record<AssignmentType, number> = {
 // ============================================
 
 export const lecturerClassApi = {
-  // List classes - GET /api/lecturer/classes
-  // Query params: keyword (tên lớp), status (0/1), semester (bỏ qua)
-  getClasses: async (params?: { keyword?: string; status?: number }) => {
-    const response = await api.get<{ results: ClassDTO[] }>('/api/lecturer/classes', { params })
-    return response.data
+  /**
+   * GET /api/lecturer/classes
+   * Lấy danh sách lớp học của GV (optional filter, search)
+   * Query params: keyword, status (integer), semester
+   *
+   * NOTE: API này yêu cầu cả Authorization và user-idToken đều dùng idToken
+   * (BE không fix được nên FE phải xử lý riêng)
+   */
+  getClasses: async (params?: { keyword?: string; status?: number; semester?: string }) => {
+    // Lấy idToken từ Cognito session
+    const session = await fetchAuthSession()
+    const idToken = session.tokens?.idToken?.toString()
+
+    if (!idToken) {
+      throw new Error('Không tìm thấy token xác thực')
+    }
+
+    // Build query string
+    const queryParams = new URLSearchParams()
+    if (params?.keyword) queryParams.append('keyword', params.keyword)
+    if (params?.status !== undefined) queryParams.append('status', params.status.toString())
+    if (params?.semester) queryParams.append('semester', params.semester)
+
+    const queryString = queryParams.toString()
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const url = `${baseUrl}/api/lecturer/classes${queryString ? `?${queryString}` : ''}`
+
+    // Gọi API với cả 2 header đều dùng idToken
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+        'user-idToken': idToken
+      }
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || 'Lỗi khi lấy danh sách lớp học')
+    }
+
+    // BE trả về { data: [...], count, message, status }
+    return response.json()
   },
 
   // Get class by ID
@@ -68,15 +108,56 @@ export const lecturerClassApi = {
     return response.data
   },
 
-  // Update class
-  updateClass: async (id: number, data: UpdateClassRequest) => {
-    const response = await api.patch<ClassDTO>(`/lecturer/classes/${id}`, data)
-    return response.data
+  /**
+   * PUT /api/lecturer/classes/{id}
+   * Cập nhật thông tin lớp học
+   * Body: { name, password, semester, academicYear, description, teacherId, status }
+   *
+   * NOTE: API này yêu cầu cả Authorization và user-idToken đều dùng idToken
+   */
+  updateClass: async (
+    id: string,
+    data: {
+      name?: string
+      password?: string
+      semester?: string
+      academicYear?: string
+      description?: string
+      teacherId?: string
+      status?: number
+    }
+  ) => {
+    // Lấy idToken từ Cognito session
+    const session = await fetchAuthSession()
+    const idToken = session.tokens?.idToken?.toString()
+
+    if (!idToken) {
+      throw new Error('Không tìm thấy token xác thực')
+    }
+
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const response = await fetch(`${baseUrl}/api/lecturer/classes/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+        'user-idToken': idToken
+      },
+      body: JSON.stringify(data)
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || 'Lỗi khi cập nhật lớp học')
+    }
+
+    return response.json()
   },
 
-  // Deactivate class (soft delete)
-  deactivateClass: async (id: number) => {
-    const response = await api.patch<{ message: string }>(`/lecturer/classes/${id}/deactivate`)
+  // Deactivate class (soft delete) - DELETE /api/lecturer/classes/{id}
+  // Chỉ thay đổi status từ 1 thành 0
+  deactivateClass: async (id: string) => {
+    const response = await api.delete(`/api/lecturer/classes/${id}`)
     return response.data
   },
 
@@ -271,10 +352,41 @@ export const lecturerNotificationApi = {
     return response.data
   },
 
-  // Get received notifications (system notifications)
+  /**
+   * GET /api/notifications
+   * Lấy danh sách thông báo đã nhận (system + class notifications)
+   *
+   * API này yêu cầu header đặc biệt:
+   * - Authorization: Bearer <idToken>
+   * - user-idToken: <idToken>
+   */
   getReceivedNotifications: async () => {
-    const response = await api.get<{ results: NotificationDTO[] }>('/notifications/received')
-    return response.data
+    // Lấy idToken từ Cognito session
+    const session = await fetchAuthSession()
+    const idToken = session.tokens?.idToken?.toString()
+
+    if (!idToken) {
+      throw new Error('Không tìm thấy token xác thực')
+    }
+
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const response = await fetch(`${baseUrl}/api/notifications`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+        'user-idToken': idToken
+      }
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || 'Lỗi khi lấy thông báo')
+    }
+
+    const data = await response.json()
+    // BE trả về { data: [...], count, message, status }
+    return data.data || data.results || []
   },
 
   // Mark notification as read
@@ -290,32 +402,25 @@ export const lecturerNotificationApi = {
 
 export const lecturerAssignmentApi = {
   /**
-   * POST /lecturer/assignments
-   * Tạo bài tập mới per class (lưu vào assignments, upload file đính kèm optional vào assignment_materials via S3)
+   * POST /api/lecturer/assignments
+   * Tạo bài tập mới per class
+   * Body: { classId, title, description, type, maxScore, weight, deadline, isPublished }
    */
   createAssignment: async (data: CreateAssignmentRequest) => {
-    const formData = new FormData()
-    formData.append('class_id', data.class_id.toString())
-    formData.append('title', data.title)
-    if (data.description) formData.append('description', data.description)
-    formData.append('type', data.type)
-    formData.append('deadline', data.deadline)
-    formData.append('max_score', (data.max_score || 10).toString())
-    formData.append('is_published', (data.is_published ?? false).toString())
-    // Auto-calculate weight based on type
-    const weight = ASSIGNMENT_WEIGHTS[data.type]
-    formData.append('weight', weight.toString())
+    // Dùng weight từ form data, nếu không có thì fallback về default theo type
+    const weight = data.weight ?? ASSIGNMENT_WEIGHTS[data.type]
 
-    // Attach files (optional - for assignment_materials)
-    if (data.files && data.files.length > 0) {
-      data.files.forEach((file) => {
-        formData.append('files', file)
-      })
-    }
-
-    const response = await api.post<AssignmentDTO>('/lecturer/assignments', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+    const response = await api.post('/api/lecturer/assignments', {
+      classId: data.class_id.toString(),
+      title: data.title,
+      description: data.description || '',
+      type: data.type,
+      maxScore: data.max_score || 10,
+      weight: weight,
+      deadline: data.deadline,
+      isPublished: data.is_published ?? true
     })
+
     return response.data
   },
 
@@ -339,77 +444,144 @@ export const lecturerAssignmentApi = {
   },
 
   /**
-   * PUT /lecturer/assignments/{id}
-   * Sửa bài tập/cột điểm của bài tập (e.g., thay đổi weight, title, type)
+   * PUT /api/lecturer/assignments/{id}?classId={classId}
+   * Sửa bài tập/cột điểm của bài tập
+   * Body: { title, description, type, maxScore, weight, deadline, isPublished }
    */
-  updateAssignment: async (assignmentId: number, data: UpdateAssignmentRequest) => {
-    const response = await api.put<AssignmentDTO>(`/lecturer/assignments/${assignmentId}`, data)
-    return response.data
-  },
-
-  /**
-   * DELETE /lecturer/assignments/{id}
-   * Xóa bài tập (soft delete - thay đổi is_published thành false)
-   */
-  deleteAssignment: async (assignmentId: number) => {
-    const response = await api.delete<{ message: string }>(`/lecturer/assignments/${assignmentId}`)
-    return response.data
-  },
-
-  /**
-   * GET /lecturer/assignments/get-submissions
-   * Lấy assignment_submissions của all học sinh (theo assignment_submissions)
-   */
-  getSubmissions: async (classId: number, assignmentId: number) => {
-    const response = await api.get<{ results: AssignmentSubmissionDTO[] }>('/lecturer/assignments/get-submissions', {
-      params: { class_id: classId, assignment_id: assignmentId }
+  updateAssignment: async (
+    assignmentId: string,
+    classId: string,
+    data: {
+      title?: string
+      description?: string
+      type?: string
+      maxScore?: number
+      weight?: number
+      deadline?: string
+      isPublished?: boolean
+    }
+  ) => {
+    const response = await api.put(`/api/lecturer/assignments/${assignmentId}`, data, {
+      params: { classId }
     })
     return response.data
   },
 
   /**
-   * POST /lecturer/assignments/
-   * Tạo/chấm điểm mới cho sinh viên per assignment/class
+   * DELETE /api/lecturer/assignments/{id}?classId={classId}
+   * Xóa bài tập (kiểm tra submissions trước)
    */
-  createGrade: async (data: { assignment_id: number; student_id: number; score: number; feedback?: string }) => {
-    const response = await api.post<AssignmentSubmissionDTO>('/lecturer/assignments/', data)
+  deleteAssignment: async (assignmentId: string, classId: string) => {
+    const response = await api.delete<{ message: string }>(`/api/lecturer/assignments/${assignmentId}`, {
+      params: { classId }
+    })
     return response.data
   },
 
   /**
-   * PUT /lecturer/assignments/{assignment_id}/update-grades
-   * Cập nhật điểm cho sinh viên per assignment
+   * GET /api/lecturer/assignments/get-submisstions
+   * Lấy assignment_submissions của all học sinh cho một assignment cụ thể
+   *
+   * NOTE: Endpoint có typo "submisstions" (2 chữ 's') theo Swagger
+   *
+   * API này yêu cầu header đặc biệt:
+   * - Authorization: Bearer <idToken>
+   * - user-idToken: <idToken>
+   *
+   * Query params:
+   * - classId: ID của lớp học
+   * - assignmentId: ID của bài tập (ASS_xxx)
    */
-  updateGrades: async (
-    assignmentId: number,
-    grades: Array<{ submission_id: number; score: number; feedback?: string }>
+  getSubmissions: async (classId: string, assignmentId: string) => {
+    // Lấy idToken từ Cognito session
+    const session = await fetchAuthSession()
+    const idToken = session.tokens?.idToken?.toString()
+
+    if (!idToken) {
+      throw new Error('Không tìm thấy token xác thực')
+    }
+
+    // Normalize assignmentId - ensure it has ASS_ prefix
+    let normalizedAssignmentId = assignmentId
+    if (!normalizedAssignmentId.startsWith('ASS_') && !normalizedAssignmentId.includes('#')) {
+      normalizedAssignmentId = `ASS_${normalizedAssignmentId}`
+    }
+    normalizedAssignmentId = normalizedAssignmentId.replace('ASSIGNMENT#', 'ASS_')
+
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    // NOTE: endpoint có typo "submisstions" theo Swagger
+    const url = `${baseUrl}/api/lecturer/assignments/get-submisstions?classId=${encodeURIComponent(classId)}&assignmentId=${encodeURIComponent(normalizedAssignmentId)}`
+
+    console.log('=== GET LECTURER SUBMISSIONS DEBUG ===')
+    console.log('URL:', url)
+    console.log('classId:', classId)
+    console.log('assignmentId:', normalizedAssignmentId)
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+        'user-idToken': idToken
+      }
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || 'Lỗi khi lấy danh sách bài nộp')
+    }
+
+    const data = await response.json()
+    console.log('Submissions data:', data)
+    // BE trả về { data: [...], count, message, status }
+    return data.data || data.results || []
+  },
+
+  /**
+   * POST /api/lecturer/assignments/{assignment_id}/update-grades?classId={classId}
+   * Chấm điểm hoặc sửa điểm (Hợp nhất)
+   * Body: { assignmentId, studentId, score, feedback }
+   */
+  updateGrade: async (
+    assignmentId: string,
+    classId: string,
+    data: {
+      assignmentId: string
+      studentId: string
+      score: number
+      feedback?: string
+    }
   ) => {
-    const response = await api.put<{ results: AssignmentSubmissionDTO[] }>(
-      `/lecturer/assignments/${assignmentId}/update-grades`,
-      { grades }
-    )
+    const response = await api.post(`/api/lecturer/assignments/${assignmentId}/update-grades`, data, {
+      params: { classId }
+    })
     return response.data
   },
 
   /**
-   * Grade a single submission (convenience method)
+   * Grade a single student (convenience method)
    */
-  gradeSubmission: async (
-    classId: number,
-    assignmentId: number,
-    submissionId: number,
-    data: GradeSubmissionRequest
-  ) => {
-    const response = await api.put<{ results: AssignmentSubmissionDTO[] }>(
-      `/lecturer/assignments/${assignmentId}/update-grades`,
-      { grades: [{ submission_id: submissionId, score: data.score, feedback: data.feedback }] }
+  gradeStudent: async (assignmentId: string, classId: string, studentId: string, score: number, feedback?: string) => {
+    const response = await api.post(
+      `/api/lecturer/assignments/${assignmentId}/update-grades`,
+      {
+        assignmentId,
+        studentId,
+        score,
+        feedback: feedback || ''
+      },
+      { params: { classId } }
     )
-    return response.data.results?.[0]
+    return response.data
   },
 
   // Publish/unpublish assignment (convenience method)
-  togglePublish: async (assignmentId: number, is_published: boolean) => {
-    const response = await api.put<AssignmentDTO>(`/lecturer/assignments/${assignmentId}`, { is_published })
+  togglePublish: async (assignmentId: string, classId: string, isPublished: boolean) => {
+    const response = await api.put<AssignmentDTO>(
+      `/api/lecturer/assignments/${assignmentId}`,
+      { isPublished },
+      { params: { classId } }
+    )
     return response.data
   }
 }
@@ -422,21 +594,46 @@ export const lecturerPostApi = {
   /**
    * POST /api/lecturer/classes/{class_id}/posts
    * Tạo post gốc (chỉ dành cho GV)
+   * Body (multipart/form-data): title, content, attachment, classId, pinned
+   *
+   * NOTE: API này yêu cầu header user-idToken
    */
   createPost: async (classId: string, data: CreatePostRequest) => {
+    // Lấy idToken từ Cognito session
+    const session = await fetchAuthSession()
+    const idToken = session.tokens?.idToken?.toString()
+
+    if (!idToken) {
+      throw new Error('Không tìm thấy token xác thực')
+    }
+
     const formData = new FormData()
     formData.append('title', data.title)
     formData.append('content', data.content)
-    formData.append('is_pinned', (data.is_pinned ?? false).toString())
+    formData.append('classId', classId)
+    formData.append('pinned', (data.is_pinned ?? false).toString())
 
     if (data.attachment) {
       formData.append('attachment', data.attachment)
     }
 
-    const response = await api.post<PostDTO>(`/api/lecturer/classes/${classId}/posts`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const response = await fetch(`${baseUrl}/api/lecturer/classes/${classId}/posts`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${idToken}`,
+        'user-idToken': idToken
+        // Không set Content-Type cho FormData, browser sẽ tự set với boundary
+      },
+      body: formData
     })
-    return response.data
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || 'Lỗi khi tạo bài đăng')
+    }
+
+    return response.json()
   },
 
   /**
@@ -468,11 +665,13 @@ export const lecturerPostApi = {
   },
 
   /**
-   * DELETE /classes/{class_id}/posts/{post_id}
-   * Xóa post
+   * DELETE /api/lecturer/posts/{id}?classId={classId}
+   * Xóa bài viết
    */
-  deletePost: async (classId: number, postId: number) => {
-    const response = await api.delete<{ message: string }>(`/classes/${classId}/posts/${postId}`)
+  deletePost: async (postId: string, classId: string) => {
+    const response = await api.delete<{ message: string }>(`/api/lecturer/posts/${postId}`, {
+      params: { classId }
+    })
     return response.data
   },
 

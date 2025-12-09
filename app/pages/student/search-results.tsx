@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useNavigate } from 'react-router'
-import { Box, VStack, HStack, Text, Spinner, Card, Badge, SimpleGrid } from '@chakra-ui/react'
-import { Search, BookOpen, Users, ArrowLeft } from 'lucide-react'
+import { Box, VStack, HStack, Text, Spinner, Card, Badge, SimpleGrid, Button } from '@chakra-ui/react'
+import { Search, BookOpen, Users, ArrowLeft, X, Calendar, Hash, Info } from 'lucide-react'
 import PageHeader from '../../components/ui/PageHeader'
 import { search, type SearchResult, type SearchType } from '../../services/searchApi'
 
@@ -17,6 +17,9 @@ export default function SearchResultsPage() {
   const [subjectResults, setSubjectResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(true)
   const [activeType, setActiveType] = useState<SearchType>('classes')
+
+  // Subject detail modal
+  const [selectedSubject, setSelectedSubject] = useState<SearchResult | null>(null)
 
   // Fetch cả 2 loại cùng lúc
   const fetchResults = useCallback(async () => {
@@ -69,10 +72,30 @@ export default function SearchResultsPage() {
       const classId = result.id.replace('CLASS#', '')
       navigate(`/student/course-details/${classId}`)
     } else if (result.type === 'subject') {
-      // Navigate to all courses with subject filter
-      const subjectId = result.id.replace('SUBJECT#', '')
-      navigate(`/student/all-courses?subject=${subjectId}`)
+      // Show subject detail modal
+      setSelectedSubject(result)
     }
+  }
+
+  // Format date for display
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return 'N/A'
+    const date = new Date(dateStr)
+    if (isNaN(date.getTime())) return dateStr
+    return date.toLocaleDateString('vi-VN', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  // Get status label
+  const getStatusLabel = (status?: number | null) => {
+    if (status === 1) return { label: 'Hoạt động', color: 'green' }
+    if (status === 0) return { label: 'Không hoạt động', color: 'red' }
+    return { label: 'Không xác định', color: 'gray' }
   }
 
   // Get display info based on type
@@ -262,6 +285,182 @@ export default function SearchResultsPage() {
           )}
         </Box>
       </Box>
+
+      {/* Subject Detail Modal */}
+      {selectedSubject && (
+        <Box
+          position='fixed'
+          top={0}
+          left={0}
+          right={0}
+          bottom={0}
+          bg='blackAlpha.500'
+          zIndex={1000}
+          display='flex'
+          alignItems='center'
+          justifyContent='center'
+          onClick={() => setSelectedSubject(null)}
+        >
+          <Box
+            bg='white'
+            borderRadius='2xl'
+            w='full'
+            maxW='500px'
+            mx={4}
+            overflow='hidden'
+            shadow='2xl'
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header with gradient */}
+            <Box h='100px' bg='linear-gradient(135deg, #22c55e 0%, #16a34a 100%)' position='relative'>
+              <Button
+                position='absolute'
+                top={3}
+                right={3}
+                variant='ghost'
+                size='sm'
+                color='white'
+                _hover={{ bg: 'whiteAlpha.200' }}
+                onClick={() => setSelectedSubject(null)}
+              >
+                <X size={20} />
+              </Button>
+              <Box
+                position='absolute'
+                bottom='-25px'
+                left='50%'
+                transform='translateX(-50%)'
+                w='60px'
+                h='60px'
+                bg='white'
+                borderRadius='xl'
+                display='flex'
+                alignItems='center'
+                justifyContent='center'
+                shadow='lg'
+              >
+                <BookOpen size={28} className='text-green-500' />
+              </Box>
+            </Box>
+
+            {/* Modal Body */}
+            <Box pt={10} pb={6} px={6}>
+              <VStack gap={4} align='stretch'>
+                {/* Title */}
+                <VStack gap={1}>
+                  <Text fontSize='xl' fontWeight='bold' color='gray.800' textAlign='center'>
+                    {selectedSubject.title}
+                  </Text>
+                  {selectedSubject.subtitle && (
+                    <Text fontSize='md' color='gray.600' textAlign='center'>
+                      {selectedSubject.subtitle}
+                    </Text>
+                  )}
+                </VStack>
+
+                {/* Status Badge */}
+                <HStack justify='center'>
+                  <Badge
+                    colorPalette={getStatusLabel(selectedSubject.status).color}
+                    variant='solid'
+                    borderRadius='full'
+                    px={3}
+                    py={1}
+                  >
+                    {getStatusLabel(selectedSubject.status).label}
+                  </Badge>
+                </HStack>
+
+                {/* Detail Info */}
+                <Card.Root bg='gray.50' borderRadius='xl'>
+                  <Card.Body p={4}>
+                    <VStack gap={3} align='stretch'>
+                      {/* ID */}
+                      <HStack gap={3}>
+                        <Box p={2} bg='green.100' borderRadius='lg'>
+                          <Hash size={16} className='text-green-600' />
+                        </Box>
+                        <VStack align='start' gap={0} flex={1}>
+                          <Text fontSize='xs' color='gray.500'>
+                            Mã môn học
+                          </Text>
+                          <Text fontSize='sm' fontWeight='medium' color='gray.800' fontFamily='mono'>
+                            {selectedSubject.id.replace('SUBJECT#', '')}
+                          </Text>
+                        </VStack>
+                      </HStack>
+
+                      {/* Type */}
+                      <HStack gap={3}>
+                        <Box p={2} bg='blue.100' borderRadius='lg'>
+                          <Info size={16} className='text-blue-600' />
+                        </Box>
+                        <VStack align='start' gap={0} flex={1}>
+                          <Text fontSize='xs' color='gray.500'>
+                            Loại
+                          </Text>
+                          <Text fontSize='sm' fontWeight='medium' color='gray.800'>
+                            {selectedSubject.type === 'subject' ? 'Môn học' : selectedSubject.type}
+                          </Text>
+                        </VStack>
+                      </HStack>
+
+                      {/* Created At */}
+                      {selectedSubject.createdAt && (
+                        <HStack gap={3}>
+                          <Box p={2} bg='orange.100' borderRadius='lg'>
+                            <Calendar size={16} className='text-orange-600' />
+                          </Box>
+                          <VStack align='start' gap={0} flex={1}>
+                            <Text fontSize='xs' color='gray.500'>
+                              Ngày tạo
+                            </Text>
+                            <Text fontSize='sm' fontWeight='medium' color='gray.800'>
+                              {formatDate(selectedSubject.createdAt)}
+                            </Text>
+                          </VStack>
+                        </HStack>
+                      )}
+
+                      {/* Extra Info */}
+                      {selectedSubject.extraInfo && (
+                        <HStack gap={3}>
+                          <Box p={2} bg='purple.100' borderRadius='lg'>
+                            <Info size={16} className='text-purple-600' />
+                          </Box>
+                          <VStack align='start' gap={0} flex={1}>
+                            <Text fontSize='xs' color='gray.500'>
+                              Thông tin thêm
+                            </Text>
+                            <Text fontSize='sm' fontWeight='medium' color='gray.800'>
+                              {selectedSubject.extraInfo}
+                            </Text>
+                          </VStack>
+                        </HStack>
+                      )}
+                    </VStack>
+                  </Card.Body>
+                </Card.Root>
+
+                {/* Action Button */}
+                <Button
+                  bg='#dd7323'
+                  color='white'
+                  borderRadius='xl'
+                  _hover={{ bg: '#c5651f' }}
+                  onClick={() => {
+                    const subjectId = selectedSubject.id.replace('SUBJECT#', '')
+                    navigate(`/student/all-courses?subject=${subjectId}`)
+                  }}
+                >
+                  <Search size={18} />
+                  <Text ml={2}>Xem các lớp học của môn này</Text>
+                </Button>
+              </VStack>
+            </Box>
+          </Box>
+        </Box>
+      )}
     </Box>
   )
 }

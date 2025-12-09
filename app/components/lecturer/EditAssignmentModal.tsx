@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
   Box,
   Text,
@@ -13,20 +13,28 @@ import {
   Field,
   Dialog,
   Portal,
-  CloseButton
+  CloseButton,
+  Checkbox
 } from '@chakra-ui/react'
-import { FileText, Upload, X } from 'lucide-react'
-import type { AssignmentType, AssignmentFormData } from '../../types'
+import { FileText, Unlock } from 'lucide-react'
+import type { AssignmentType, AssignmentDTO } from '../../types'
 
-interface CreateAssignmentModalProps {
+interface EditAssignmentModalProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: AssignmentFormData) => Promise<void>
-  classId: string | number
+  onSubmit: (data: EditAssignmentFormData) => Promise<void>
+  assignment: AssignmentDTO | null
 }
 
-// Re-export for backward compatibility
-export type { AssignmentFormData }
+export interface EditAssignmentFormData {
+  title: string
+  description: string
+  type: AssignmentType
+  deadline: string
+  maxScore: number
+  weight: number // Trọng số (0-1)
+  isPublished: boolean
+}
 
 const TYPE_OPTIONS: { value: AssignmentType; label: string; weight: string }[] = [
   { value: 'homework', label: 'Bài tập', weight: '20%' },
@@ -35,37 +43,48 @@ const TYPE_OPTIONS: { value: AssignmentType; label: string; weight: string }[] =
   { value: 'final', label: 'Cuối kỳ', weight: '25%' }
 ]
 
-export default function CreateAssignmentModal({ isOpen, onClose, onSubmit }: CreateAssignmentModalProps) {
-  const [formData, setFormData] = useState<AssignmentFormData>({
+export default function EditAssignmentModal({ isOpen, onClose, onSubmit, assignment }: EditAssignmentModalProps) {
+  const [formData, setFormData] = useState<EditAssignmentFormData>({
     title: '',
     description: '',
     type: 'homework',
     deadline: '',
-    max_score: 10,
-    weight: 0.2, // Default weight for homework
-    is_published: true,
-    files: []
+    maxScore: 10,
+    weight: 0.2,
+    isPublished: true
   })
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const handleChange = (field: keyof AssignmentFormData, value: string | number | boolean | File[]) => {
+  // Populate form when assignment changes
+  useEffect(() => {
+    if (assignment) {
+      // Convert deadline to datetime-local format (YYYY-MM-DDTHH:mm)
+      let deadlineFormatted = ''
+      if (assignment.deadline) {
+        const date = new Date(assignment.deadline)
+        if (!isNaN(date.getTime())) {
+          deadlineFormatted = date.toISOString().slice(0, 16)
+        }
+      }
+
+      setFormData({
+        title: assignment.title || '',
+        description: assignment.description || '',
+        type: assignment.type || 'homework',
+        deadline: deadlineFormatted,
+        maxScore: assignment.max_score || 10,
+        weight: assignment.weight || 0.2,
+        isPublished: assignment.is_published ?? true
+      })
+    }
+  }, [assignment])
+
+  const handleChange = (field: keyof EditAssignmentFormData, value: string | number | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: '' }))
     }
-  }
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
-    handleChange('files', [...formData.files, ...files])
-  }
-
-  const removeFile = (index: number) => {
-    handleChange(
-      'files',
-      formData.files.filter((_, i) => i !== index)
-    )
   }
 
   const validate = (): boolean => {
@@ -74,57 +93,29 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSubmit }: Cre
     if (!formData.deadline) {
       newErrors.deadline = 'Vui lòng chọn deadline'
     } else {
-      // Validate deadline format (datetime-local returns YYYY-MM-DDTHH:mm)
       const deadlineDate = new Date(formData.deadline)
       if (isNaN(deadlineDate.getTime())) {
         newErrors.deadline = 'Deadline không hợp lệ'
       }
     }
     setErrors(newErrors)
-    console.log('Validation errors:', newErrors, 'Form data:', formData)
     return Object.keys(newErrors).length === 0
   }
 
   const handleSubmit = async () => {
-    console.log('Submitting form data:', formData)
-    if (!validate()) {
-      console.log('Validation failed')
-      return
-    }
+    if (!validate()) return
     setLoading(true)
     try {
-      console.log('Calling onSubmit with:', { ...formData, is_published: true })
-      await onSubmit({ ...formData, is_published: true })
-      // Reset form
-      setFormData({
-        title: '',
-        description: '',
-        type: 'homework',
-        deadline: '',
-        max_score: 10,
-        weight: 0.2,
-        is_published: true,
-        files: []
-      })
+      await onSubmit(formData)
       onClose()
     } catch (err) {
-      console.error('Failed to create assignment:', err)
+      console.error('Failed to update assignment:', err)
     } finally {
       setLoading(false)
     }
   }
 
   const handleClose = () => {
-    setFormData({
-      title: '',
-      description: '',
-      type: 'homework',
-      deadline: '',
-      max_score: 10,
-      weight: 0.2,
-      is_published: true,
-      files: []
-    })
     setErrors({})
     onClose()
   }
@@ -148,7 +139,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSubmit }: Cre
                   <FileText size={20} color='white' />
                 </Box>
                 <Dialog.Title fontSize='xl' fontWeight='bold' color='gray.800'>
-                  Tạo bài tập mới
+                  Chỉnh sửa bài tập
                 </Dialog.Title>
               </HStack>
             </Dialog.Header>
@@ -231,6 +222,20 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSubmit }: Cre
                   {errors.deadline && <Field.ErrorText>{errors.deadline}</Field.ErrorText>}
                 </Field.Root>
 
+                {/* Max Score */}
+                <Field.Root>
+                  <Field.Label fontWeight='medium'>Điểm tối đa</Field.Label>
+                  <Input
+                    type='number'
+                    value={formData.maxScore}
+                    onChange={(e) => handleChange('maxScore', parseInt(e.target.value) || 10)}
+                    borderColor='orange.200'
+                    _focus={{ borderColor: '#dd7323', boxShadow: '0 0 0 1px #dd7323' }}
+                    min={1}
+                    max={100}
+                  />
+                </Field.Root>
+
                 {/* Description */}
                 <Field.Root>
                   <Field.Label fontWeight='medium'>Mô tả</Field.Label>
@@ -244,54 +249,29 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSubmit }: Cre
                   />
                 </Field.Root>
 
-                {/* File Upload - Full Width */}
-                <Field.Root>
-                  <Field.Label fontWeight='medium'>File đính kèm</Field.Label>
-                  <Box
-                    w='full'
-                    border='2px dashed'
-                    borderColor='orange.200'
-                    borderRadius='xl'
-                    p={6}
-                    textAlign='center'
-                    cursor='pointer'
-                    _hover={{ borderColor: '#dd7323', bg: 'orange.50' }}
-                    transition='all 0.2s'
-                    onClick={() => document.getElementById('assignment-file-upload')?.click()}
+                {/* Is Published */}
+                <HStack>
+                  <Checkbox.Root
+                    checked={formData.isPublished}
+                    onCheckedChange={(e) => handleChange('isPublished', !!e.checked)}
                   >
-                    <Upload size={32} color='#dd7323' style={{ margin: '0 auto 12px' }} />
-                    <Text fontSize='sm' color='gray.600' fontWeight='medium'>
-                      Click để chọn file hoặc kéo thả vào đây
-                    </Text>
-                    <Text fontSize='xs' color='gray.400' mt={1}>
-                      Hỗ trợ: PDF, DOC, DOCX, ZIP, RAR, hình ảnh
-                    </Text>
-                    <input
-                      id='assignment-file-upload'
-                      type='file'
-                      multiple
-                      hidden
-                      onChange={handleFileChange}
-                      accept='.pdf,.doc,.docx,.zip,.rar,.png,.jpg,.jpeg,.gif,.ppt,.pptx,.xls,.xlsx'
-                    />
-                  </Box>
-
-                  {/* File List */}
-                  {formData.files.length > 0 && (
-                    <VStack gap={2} mt={3} align='stretch'>
-                      {formData.files.map((file, index) => (
-                        <HStack key={index} p={2} bg='orange.50' borderRadius='lg' justify='space-between'>
-                          <Text fontSize='sm' color='gray.700' lineClamp={1}>
-                            {file.name}
-                          </Text>
-                          <Button size='xs' variant='ghost' color='red.500' onClick={() => removeFile(index)}>
-                            <X size={14} />
-                          </Button>
-                        </HStack>
-                      ))}
-                    </VStack>
-                  )}
-                </Field.Root>
+                    <Checkbox.HiddenInput />
+                    <Checkbox.Control
+                      borderWidth='2px'
+                      borderColor='gray.300'
+                      _checked={{ bg: '#dd7323', borderColor: '#dd7323' }}
+                      _hover={{ borderColor: '#dd7323' }}
+                    >
+                      <Checkbox.Indicator />
+                    </Checkbox.Control>
+                    <Checkbox.Label>
+                      <HStack gap={1}>
+                        <Unlock size={14} color='#dd7323' />
+                        <Text>Mở bài tập (cho phép sinh viên nộp bài)</Text>
+                      </HStack>
+                    </Checkbox.Label>
+                  </Checkbox.Root>
+                </HStack>
               </VStack>
             </Dialog.Body>
 
@@ -301,7 +281,7 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSubmit }: Cre
                   Hủy
                 </Button>
                 <Button bg='#dd7323' color='white' _hover={{ bg: '#c5651f' }} onClick={handleSubmit} loading={loading}>
-                  Tạo bài tập
+                  Lưu thay đổi
                 </Button>
               </HStack>
             </Dialog.Footer>

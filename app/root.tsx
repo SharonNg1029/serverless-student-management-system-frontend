@@ -13,23 +13,28 @@ const queryClient = new QueryClient({
     queries: {
       staleTime: 1000 * 60 * 5, // 5 minutes
       refetchOnWindowFocus: false,
-      retry: 1,
-    },
-  },
+      retry: 1
+    }
+  }
 })
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="vi">
+    <html lang='vi'>
       <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <link rel="icon" type="image/png" href="/Logo_AWS_FCJ.png" />
+        <meta charSet='utf-8' />
+        <meta name='viewport' content='width=device-width, initial-scale=1' />
+        <link rel='icon' type='image/png' href='/Logo_AWS_FCJ.png' />
         <title>StudentManager Pro - LMS</title>
-        <script src="https://cdn.tailwindcss.com"></script>
-        <script src="https://accounts.google.com/gsi/client" async defer></script>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
-        <style dangerouslySetInnerHTML={{ __html: `
+        <script src='https://cdn.tailwindcss.com'></script>
+        <script src='https://accounts.google.com/gsi/client' async defer></script>
+        <link
+          href='https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap'
+          rel='stylesheet'
+        />
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `
           body {
             font-family: 'Inter', sans-serif;
             background-color: #F3F4F6;
@@ -51,7 +56,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
             bottom: 40px !important;
             right: 10px !important;
           }
-        ` }} />
+        `
+          }}
+        />
         <Meta />
         <Links />
       </head>
@@ -75,7 +82,7 @@ export default function Root() {
   useEffect(() => {
     // Initialize Amplify configuration
     configureAmplify()
-    
+
     // Check authentication status on app load
     checkAuthStatus()
   }, [])

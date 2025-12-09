@@ -16,10 +16,10 @@ import {
 } from '@chakra-ui/react'
 import { Upload, File, X, Calendar, FileText, AlertCircle } from 'lucide-react'
 import { toaster } from '../ui/toaster'
-import api from '../../utils/axios'
+import { studentAssignmentApi } from '../../services/studentApi'
 
 interface Assignment {
-  id: number
+  id: number | string
   title: string
   type: 'homework' | 'project' | 'midterm' | 'final'
   deadline: string
@@ -31,7 +31,9 @@ interface SubmissionModalProps {
   isOpen: boolean
   onClose: () => void
   assignment: Assignment | null
+  classId: string
   onSubmitSuccess: () => void
+  isResubmit?: boolean // true nếu đang nộp lại bài đã nộp trước đó
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -49,9 +51,16 @@ const TYPE_COLORS: Record<string, string> = {
 }
 
 // Mock submission for UI testing
-const USE_MOCK_DATA = true
+const USE_MOCK_DATA = false
 
-export default function SubmissionModal({ isOpen, onClose, assignment, onSubmitSuccess }: SubmissionModalProps) {
+export default function SubmissionModal({
+  isOpen,
+  onClose,
+  assignment,
+  classId,
+  onSubmitSuccess,
+  isResubmit = false
+}: SubmissionModalProps) {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [comment, setComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -116,6 +125,13 @@ export default function SubmissionModal({ isOpen, onClose, assignment, onSubmitS
   }
 
   const handleSubmit = async () => {
+    console.log('=== HANDLE SUBMIT CLICKED ===')
+    console.log('selectedFile:', selectedFile)
+    console.log('isOverdue:', isOverdue)
+    console.log('isResubmit:', isResubmit)
+    console.log('classId:', classId)
+    console.log('assignment.id:', assignment.id)
+
     if (!selectedFile) {
       toaster.create({
         title: 'Chưa chọn file',
@@ -144,15 +160,12 @@ export default function SubmissionModal({ isOpen, onClose, assignment, onSubmitS
     }
 
     try {
-      const formData = new FormData()
-      formData.append('file', selectedFile)
-      formData.append('assignment_id', String(assignment.id))
-      if (comment.trim()) {
-        formData.append('comment', comment.trim())
-      }
-
-      await api.post(`/api/student/assignments/${assignment.id}/submit`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      // Gọi API nộp bài với header đặc biệt (cả Authorization và user-idToken đều dùng idToken)
+      await studentAssignmentApi.submitAssignment({
+        classId: classId,
+        assignmentId: String(assignment.id),
+        file: selectedFile,
+        content: comment.trim() || undefined
       })
 
       toaster.create({
@@ -166,7 +179,7 @@ export default function SubmissionModal({ isOpen, onClose, assignment, onSubmitS
       onSubmitSuccess()
       onClose()
     } catch (err: any) {
-      const message = err.response?.data?.message || 'Nộp bài thất bại. Vui lòng thử lại.'
+      const message = err.message || 'Nộp bài thất bại. Vui lòng thử lại.'
       toaster.create({
         title: 'Lỗi',
         description: message,
@@ -206,7 +219,7 @@ export default function SubmissionModal({ isOpen, onClose, assignment, onSubmitS
                       <Upload size={20} color='white' />
                     </Box>
                     <Dialog.Title fontSize='xl' fontWeight='bold' color='gray.800'>
-                      Nộp bài tập
+                      {isResubmit ? 'Nộp lại bài tập' : 'Nộp bài tập'}
                     </Dialog.Title>
                   </HStack>
                   <Badge colorPalette={TYPE_COLORS[assignment.type]} variant='solid' borderRadius='full'>
@@ -229,24 +242,31 @@ export default function SubmissionModal({ isOpen, onClose, assignment, onSubmitS
                   border='1px solid'
                   borderColor={isOverdue ? 'red.200' : 'orange.200'}
                 >
-                  {isOverdue ? (
-                    <AlertCircle size={18} color='#e53e3e' />
-                  ) : (
-                    <Calendar size={18} color='#dd7323' />
-                  )}
+                  {isOverdue ? <AlertCircle size={18} color='#e53e3e' /> : <Calendar size={18} color='#dd7323' />}
                   <Text fontSize='sm' color={isOverdue ? 'red.700' : 'gray.700'}>
-                    <Text as='span' fontWeight='semibold'>Deadline:</Text>{' '}
-                    {deadlineDate.toLocaleDateString('vi-VN')} • {deadlineDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                    {isOverdue && <Text as='span' color='red.600' fontWeight='semibold'> (Đã quá hạn)</Text>}
+                    <Text as='span' fontWeight='semibold'>
+                      Deadline:
+                    </Text>{' '}
+                    {deadlineDate.toLocaleDateString('vi-VN')} •{' '}
+                    {deadlineDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                    {isOverdue && (
+                      <Text as='span' color='red.600' fontWeight='semibold'>
+                        {' '}
+                        (Đã quá hạn)
+                      </Text>
+                    )}
                   </Text>
                 </HStack>
 
                 {/* File Upload Area */}
                 <Box>
                   <Text fontSize='sm' fontWeight='semibold' color='gray.700' mb={2}>
-                    File nộp bài <Text as='span' color='red.500'>*</Text>
+                    File nộp bài{' '}
+                    <Text as='span' color='red.500'>
+                      *
+                    </Text>
                   </Text>
-                  
+
                   {!selectedFile ? (
                     <Box
                       border='2px dashed'
@@ -345,7 +365,17 @@ export default function SubmissionModal({ isOpen, onClose, assignment, onSubmitS
                 <HStack p={3} bg='yellow.50' borderRadius='lg' border='1px solid' borderColor='yellow.200'>
                   <AlertCircle size={16} color='#d69e2e' />
                   <Text fontSize='xs' color='yellow.800'>
-                    Lưu ý: Bạn chỉ được nộp bài <Text as='span' fontWeight='bold'>1 lần duy nhất</Text>. Hãy kiểm tra kỹ trước khi nộp.
+                    {isResubmit ? (
+                      <>
+                        Lưu ý: Bài nộp mới sẽ{' '}
+                        <Text as='span' fontWeight='bold'>
+                          ghi đè bài cũ
+                        </Text>
+                        . Hãy kiểm tra kỹ trước khi nộp.
+                      </>
+                    ) : (
+                      <>Lưu ý: Bạn có thể nộp lại bài nếu cần. Bài nộp mới sẽ ghi đè bài cũ.</>
+                    )}
                   </Text>
                 </HStack>
               </VStack>
@@ -366,20 +396,23 @@ export default function SubmissionModal({ isOpen, onClose, assignment, onSubmitS
                 Hủy
               </Button>
               <Button
-                bg='#dd7323'
+                bg={isResubmit ? 'blue.500' : '#dd7323'}
                 color='white'
                 borderRadius='xl'
                 flex={1}
                 size='lg'
                 fontWeight='semibold'
-                _hover={{ bg: '#c5651f' }}
-                onClick={handleSubmit}
+                _hover={{ bg: isResubmit ? 'blue.600' : '#c5651f' }}
+                onClick={() => {
+                  console.log('Button clicked!')
+                  handleSubmit()
+                }}
                 loading={submitting}
                 loadingText='Đang nộp...'
-                disabled={!selectedFile || isOverdue}
+                disabled={!selectedFile || isOverdue || submitting}
               >
                 <Upload size={18} />
-                Nộp bài
+                {isResubmit ? 'Nộp lại' : 'Nộp bài'}
               </Button>
             </Dialog.Footer>
 

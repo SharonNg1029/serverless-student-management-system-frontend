@@ -21,7 +21,7 @@ interface CreatePostModalProps {
   isOpen: boolean
   onClose: () => void
   onSubmit: (data: PostFormData) => Promise<void>
-  classId: number
+  classId: string
 }
 
 export interface PostFormData {
@@ -66,9 +66,14 @@ export default function CreatePostModal({ isOpen, onClose, onSubmit }: CreatePos
   }
 
   const handleSubmit = async () => {
-    if (!validate()) return
+    console.log('CreatePostModal - Submitting:', formData)
+    if (!validate()) {
+      console.log('CreatePostModal - Validation failed')
+      return
+    }
     setLoading(true)
     try {
+      console.log('CreatePostModal - Calling onSubmit')
       await onSubmit(formData)
       // Reset form
       setFormData({
@@ -106,15 +111,7 @@ export default function CreatePostModal({ isOpen, onClose, onSubmit }: CreatePos
       <Portal>
         <Dialog.Backdrop bg='blackAlpha.600' backdropFilter='blur(4px)' />
         <Dialog.Positioner>
-          <Dialog.Content
-            borderRadius='2xl'
-            shadow='2xl'
-            maxW='xl'
-            w='full'
-            mx={4}
-            overflow='hidden'
-            bg='white'
-          >
+          <Dialog.Content borderRadius='2xl' shadow='2xl' maxW='xl' w='full' mx={4} overflow='hidden' bg='white'>
             <Dialog.Header p={6} pb={4}>
               <HStack gap={3}>
                 <Box p={2} bg='#dd7323' borderRadius='lg'>
@@ -130,7 +127,12 @@ export default function CreatePostModal({ isOpen, onClose, onSubmit }: CreatePos
               <VStack gap={4} align='stretch'>
                 {/* Title */}
                 <Field.Root invalid={!!errors.title}>
-                  <Field.Label fontWeight='medium'>Tiêu đề <Text as='span' color='red.500'>*</Text></Field.Label>
+                  <Field.Label fontWeight='medium'>
+                    Tiêu đề{' '}
+                    <Text as='span' color='red.500'>
+                      *
+                    </Text>
+                  </Field.Label>
                   <Input
                     placeholder='Nhập tiêu đề bài đăng...'
                     value={formData.title}
@@ -143,7 +145,12 @@ export default function CreatePostModal({ isOpen, onClose, onSubmit }: CreatePos
 
                 {/* Content - Markdown Editor */}
                 <Field.Root invalid={!!errors.content}>
-                  <Field.Label fontWeight='medium'>Nội dung <Text as='span' color='red.500'>*</Text></Field.Label>
+                  <Field.Label fontWeight='medium'>
+                    Nội dung{' '}
+                    <Text as='span' color='red.500'>
+                      *
+                    </Text>
+                  </Field.Label>
                   <Box
                     data-color-mode='light'
                     border='1px solid'
@@ -177,9 +184,9 @@ export default function CreatePostModal({ isOpen, onClose, onSubmit }: CreatePos
                     onCheckedChange={(e) => handleChange('is_pinned', !!e.checked)}
                   >
                     <Checkbox.HiddenInput />
-                    <Checkbox.Control 
+                    <Checkbox.Control
                       borderWidth='2px'
-                      borderColor='gray.300' 
+                      borderColor='gray.300'
                       _checked={{ bg: '#dd7323', borderColor: '#dd7323' }}
                       _hover={{ borderColor: '#dd7323' }}
                     >
@@ -226,21 +233,11 @@ export default function CreatePostModal({ isOpen, onClose, onSubmit }: CreatePos
                       />
                     </Box>
                   ) : (
-                    <HStack
-                      p={3}
-                      bg='orange.50'
-                      borderRadius='lg'
-                      justify='space-between'
-                    >
+                    <HStack p={3} bg='orange.50' borderRadius='lg' justify='space-between'>
                       <Text fontSize='sm' color='gray.700' lineClamp={1}>
                         {formData.attachment.name}
                       </Text>
-                      <Button
-                        size='xs'
-                        variant='ghost'
-                        color='red.500'
-                        onClick={removeFile}
-                      >
+                      <Button size='xs' variant='ghost' color='red.500' onClick={removeFile}>
                         <X size={14} />
                       </Button>
                     </HStack>
@@ -254,27 +251,14 @@ export default function CreatePostModal({ isOpen, onClose, onSubmit }: CreatePos
                 <Button variant='outline' borderColor='orange.200' onClick={handleClose}>
                   Hủy
                 </Button>
-                <Button
-                  bg='#dd7323'
-                  color='white'
-                  _hover={{ bg: '#c5651f' }}
-                  onClick={handleSubmit}
-                  loading={loading}
-                >
+                <Button bg='#dd7323' color='white' _hover={{ bg: '#c5651f' }} onClick={handleSubmit} loading={loading}>
                   Đăng bài
                 </Button>
               </HStack>
             </Dialog.Footer>
 
             <Dialog.CloseTrigger asChild>
-              <CloseButton
-                size='sm'
-                pos='absolute'
-                top={4}
-                right={4}
-                borderRadius='full'
-                _hover={{ bg: 'gray.100' }}
-              />
+              <CloseButton size='sm' pos='absolute' top={4} right={4} borderRadius='full' _hover={{ bg: 'gray.100' }} />
             </Dialog.CloseTrigger>
           </Dialog.Content>
         </Dialog.Positioner>

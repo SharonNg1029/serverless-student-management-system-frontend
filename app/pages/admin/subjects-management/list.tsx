@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import TableList, { type Column } from '../../../components/common/TableList'
-import { Book, Search, X, Loader2, CheckCircle, BookOpen } from 'lucide-react'
+import { Book, Search, X, Loader2, CheckCircle, BookOpen, Calendar } from 'lucide-react'
 import type { Subject } from '../../../types'
 import api from '../../../utils/axios'
 import { toaster } from '../../../components/ui/toaster'
@@ -12,24 +12,19 @@ const SubjectsList: React.FC = () => {
   const navigate = useNavigate()
 
   // States for data and loading
-  const [subjects, setSubjects] = useState<Subject[]>([])
+  const [allSubjects, setAllSubjects] = useState<Subject[]>([]) // Dữ liệu gốc từ API
   const [loading, setLoading] = useState<boolean>(true)
 
   // States for filters
-  const [keyword, setKeyword] = useState<string>('')
-  const [status, setStatus] = useState<string>('')
+  const [keyword, setKeyword] = useState<string>('') // Filter client-side
+  const [status, setStatus] = useState<string>('') // Filter gọi API
 
-  // Debounced keyword for API calls
-  const [debouncedKeyword, setDebouncedKeyword] = useState<string>('')
-
-  // Debounce keyword input (wait 500ms after user stops typing)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedKeyword(keyword)
-    }, 500)
-
-    return () => clearTimeout(timer)
-  }, [keyword])
+  // Filter subjects client-side theo keyword
+  const filteredSubjects = allSubjects.filter((subject) => {
+    if (!keyword.trim()) return true
+    const searchTerm = keyword.trim().toLowerCase()
+    return subject.codeSubject.toLowerCase().includes(searchTerm) || subject.name.toLowerCase().includes(searchTerm)
+  })
 
   // ============================================
   // API Response Type từ BE
@@ -45,6 +40,8 @@ const SubjectsList: React.FC = () => {
     avatar: string | null
     extraInfo: string // "Credits: X | Dept: Y | Status: 0/1"
     status?: number // có thể BE trả về trực tiếp
+    created_at?: string // ngày tạo từ API
+    createdAt?: string // ngày tạo (alternative field name)
   }
 
   // Transform API response item to Subject format
@@ -73,56 +70,25 @@ const SubjectsList: React.FC = () => {
       department: deptMatch ? deptMatch[1] : '',
       description: '',
       status: subjectStatus,
-      created_at: '',
+      created_at: item.created_at || item.createdAt || '',
       updated_at: ''
     }
   }
 
-  // Check if keyword looks like a subject code (uppercase letters + numbers)
-  const isSubjectCode = (keyword: string): boolean => {
-    return /^[A-Z0-9]+$/.test(keyword.trim())
-  }
-
-  // Fetch subjects from API
+  // Fetch subjects from API - chỉ gọi khi status thay đổi
   const fetchSubjects = async () => {
     try {
       setLoading(true)
-      const trimmedKeyword = debouncedKeyword.trim()
 
-      // Nếu keyword giống mã môn học (VD: PRN211, DBI202) -> thử tìm chính xác trước
-      if (trimmedKeyword && isSubjectCode(trimmedKeyword)) {
-        try {
-          // === GỌI API GET /api/admin/subjects/{codeSubject} ===
-          const exactResponse = await api.get<SubjectFromAPI>(`/api/admin/subjects/${trimmedKeyword}`)
-          console.log('=== EXACT SUBJECT FOUND ===', exactResponse.data)
-
-          if (exactResponse.data) {
-            const subject = transformSubjectFromAPI(exactResponse.data, 0)
-            // Filter by status if needed
-            if (status === '' || subject.status === parseInt(status)) {
-              setSubjects([subject])
-              return
-            } else {
-              setSubjects([])
-              return
-            }
-          }
-        } catch (exactError: any) {
-          // Không tìm thấy chính xác -> fallback sang search với keyword
-          console.log('Exact match not found, falling back to keyword search')
-        }
-      }
-
-      // === GỌI API GET /api/admin/subjects với params ===
+      // === GỌI API GET /api/admin/subjects với params status ===
       const params: Record<string, string> = {}
-      if (trimmedKeyword) params.keyword = trimmedKeyword
       if (status !== '') params.status = status
 
       const response = await api.get<{ data: SubjectFromAPI[] }>('/api/admin/subjects', { params })
       console.log('=== SUBJECTS API RESPONSE ===', response.data)
 
       const transformedSubjects: Subject[] = (response.data.data || []).map(transformSubjectFromAPI)
-      setSubjects(transformedSubjects)
+      setAllSubjects(transformedSubjects)
     } catch (error: any) {
       console.error('Error fetching subjects:', error)
       toaster.create({
@@ -130,16 +96,16 @@ const SubjectsList: React.FC = () => {
         description: error.response?.data?.message || 'Không thể tải danh sách môn học',
         type: 'error'
       })
-      setSubjects([])
+      setAllSubjects([])
     } finally {
       setLoading(false)
     }
   }
 
-  // Load data on mount and when filters change
+  // Load data on mount và khi status thay đổi (keyword filter client-side)
   useEffect(() => {
     fetchSubjects()
-  }, [debouncedKeyword, status])
+  }, [status])
 
   // Handle clear filters
   const handleClearFilters = () => {
@@ -209,10 +175,24 @@ const SubjectsList: React.FC = () => {
       )
     },
     {
-      header: 'Số tín chỉ',
-      accessor: 'credits',
-      className: 'text-center',
-      render: (row) => <div className='text-center font-bold text-slate-600'>{row.credits}</div>
+      header: 'Ngày tạo',
+      accessor: 'created_at',
+      render: (row) => {
+        if (!row.created_at) return <span className='text-slate-400'>-</span>
+        // Format date: 2024-01-15T10:30:00Z -> 15/01/2024
+        const date = new Date(row.created_at)
+        const formatted = date.toLocaleDateString('vi-VN', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric'
+        })
+        return (
+          <div className='flex items-center gap-1.5 text-slate-600'>
+            <Calendar size={14} className='text-slate-400' />
+            <span>{formatted}</span>
+          </div>
+        )
+      }
     },
     {
       header: 'Trạng thái',
@@ -307,7 +287,7 @@ const SubjectsList: React.FC = () => {
         <TableList
           title='Quản lý Môn học'
           subtitle='Danh sách các môn học.'
-          data={subjects}
+          data={filteredSubjects}
           columns={columns}
           onAdd={() => navigate('/admin/subjects-management/create')}
           onEdit={handleEditSubject}

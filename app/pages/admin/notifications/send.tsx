@@ -142,25 +142,27 @@ const SendNotificationPage: React.FC = () => {
     setIsLoading(true)
     try {
       // Prepare payload theo API spec
+      // API yêu cầu: { userId, title, content, type, classId }
       const payload: {
-        userId?: string
+        userId: string
         title: string
         content: string
         type: string
         classId?: string
       } = {
+        userId: notificationType === 'class' ? userId : 'ADMIN', // System notification dùng userId = 'ADMIN'
         title: title.trim(),
         content: content.trim(),
         type: notificationType
       }
 
+      // Chỉ gửi classId khi type = class
       if (notificationType === 'class') {
         payload.classId = classId
-        payload.userId = userId
       }
-      // System notification gửi toàn trường - không cần userId
 
-      console.log('Sending notification with payload:', payload)
+      console.log('=== SENDING NOTIFICATION ===')
+      console.log('Payload:', JSON.stringify(payload, null, 2))
 
       // === GỌI API POST /api/admin/notifications ===
       const response = await api.post('/api/admin/notifications', payload)

@@ -220,44 +220,44 @@ const UsersList: React.FC = () => {
     }
   ]
 
-  // Handle ban user - API: PATCH /api/admin/users/deactivate/{id}
-  // Lưu ý: API dùng userId (user.id), không phải codeUser
-  const handleBanUser = async (user: UserDisplay) => {
-    // Chỉ hỗ trợ khóa tài khoản (deactivate), không có API mở khóa
-    if (user.status === 0) {
-      toaster.create({
-        title: 'Thông báo',
-        description: 'Tài khoản này đã bị khóa trước đó.',
-        type: 'info'
-      })
-      return
-    }
+  // Handle toggle user status (ban/unlock)
+  // API: PATCH /api/admin/users/update-status/{id}?status=0 (khóa) hoặc status=1 (mở)
+  const handleToggleUserStatus = async (user: UserDisplay) => {
+    const isLocked = user.status === 0
+    const action = isLocked ? 'mở khóa' : 'khóa'
+    const newStatus = isLocked ? 1 : 0
 
-    if (!confirm(`Bạn có chắc muốn khóa tài khoản "${user.name}" (${user.codeUser})?`)) {
+    if (!confirm(`Bạn có chắc muốn ${action} tài khoản "${user.name}" (${user.codeUser})?`)) {
       return
     }
 
     try {
-      // === GỌI API PATCH /api/admin/users/deactivate/{id} ===
-      // Sử dụng user.id (userId từ API response)
-      await api.patch(`/api/admin/users/deactivate/${user.id}`)
+      // === GỌI API PATCH /api/admin/users/update-status/{id}?status={0|1} ===
+      await api.patch(`/api/admin/users/update-status/${user.id}`, null, {
+        params: { status: newStatus }
+      })
 
       toaster.create({
         title: 'Thành công',
-        description: `Đã khóa tài khoản "${user.name}"`,
+        description: isLocked ? `Đã mở khóa tài khoản "${user.name}"` : `Đã khóa tài khoản "${user.name}"`,
         type: 'success'
       })
 
       // Refresh list
       fetchUsers()
     } catch (error: any) {
-      console.error('Error banning user:', error)
+      console.error('Error updating user status:', error)
       toaster.create({
         title: 'Lỗi',
-        description: error.response?.data?.message || 'Không thể khóa tài khoản',
+        description: error.response?.data?.message || `Không thể ${action} tài khoản`,
         type: 'error'
       })
     }
+  }
+
+  // Get delete label based on user status
+  const getDeleteLabel = (user: UserDisplay) => {
+    return user.status === 0 ? 'Mở tài khoản' : 'Khóa tài khoản'
   }
 
   return (
@@ -342,8 +342,8 @@ const UsersList: React.FC = () => {
           data={users}
           columns={columns}
           onAdd={() => navigate('/admin/users-management/create')}
-          onDelete={handleBanUser}
-          deleteLabel='Khóa tài khoản'
+          onDelete={handleToggleUserStatus}
+          deleteLabel={getDeleteLabel}
         />
       )}
     </div>

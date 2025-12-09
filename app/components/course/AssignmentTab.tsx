@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router'
 import { Box, Text, VStack, HStack, Spinner, Badge, Card, Table, Button } from '@chakra-ui/react'
 import {
   useReactTable,
@@ -11,10 +10,10 @@ import {
   type ColumnDef,
   type SortingState
 } from '@tanstack/react-table'
-import { FileText, CheckCircle, Clock, ArrowUpDown, Upload } from 'lucide-react'
-import StatsCard from '../ui/StatsCard'
+import { FileText, ArrowUpDown, Eye } from 'lucide-react'
 import EmptyState from '../ui/EmptyState'
 import SubmissionModal from './SubmissionModal'
+import AssignmentDetailModal from './AssignmentDetailModal'
 import api from '../../utils/axios'
 
 // ============================================
@@ -28,8 +27,6 @@ const MOCK_ASSIGNMENTS: Assignment[] = [
     title: 'Lab 01 - Giới thiệu Python',
     type: 'homework',
     deadline: '2024-10-10T23:59:00Z',
-    is_submitted: true,
-    score: 8.5,
     max_score: 10
   },
   {
@@ -37,8 +34,6 @@ const MOCK_ASSIGNMENTS: Assignment[] = [
     title: 'Lab 02 - Biến và kiểu dữ liệu',
     type: 'homework',
     deadline: '2024-10-17T23:59:00Z',
-    is_submitted: true,
-    score: 9.0,
     max_score: 10
   },
   {
@@ -46,8 +41,6 @@ const MOCK_ASSIGNMENTS: Assignment[] = [
     title: 'Project Phase 1 - Phân tích yêu cầu',
     type: 'project',
     deadline: '2024-10-25T23:59:00Z',
-    is_submitted: true,
-    score: null,
     max_score: 10
   },
   {
@@ -55,8 +48,6 @@ const MOCK_ASSIGNMENTS: Assignment[] = [
     title: 'Kiểm tra giữa kỳ',
     type: 'midterm',
     deadline: '2024-11-15T10:00:00Z',
-    is_submitted: true,
-    score: 7.5,
     max_score: 10
   },
   {
@@ -64,8 +55,6 @@ const MOCK_ASSIGNMENTS: Assignment[] = [
     title: 'Lab 03 - Vòng lặp và điều kiện',
     type: 'homework',
     deadline: '2025-12-20T23:59:00Z',
-    is_submitted: false,
-    score: null,
     max_score: 10
   },
   {
@@ -73,8 +62,6 @@ const MOCK_ASSIGNMENTS: Assignment[] = [
     title: 'Project Phase 2 - Thiết kế hệ thống',
     type: 'project',
     deadline: '2025-12-25T23:59:00Z',
-    is_submitted: false,
-    score: null,
     max_score: 10
   },
   {
@@ -82,19 +69,15 @@ const MOCK_ASSIGNMENTS: Assignment[] = [
     title: 'Thi cuối kỳ',
     type: 'final',
     deadline: '2025-12-30T08:00:00Z',
-    is_submitted: false,
-    score: null,
     max_score: 10
   }
 ]
 
 interface Assignment {
-  id: number
+  id: number | string
   title: string
   type: 'homework' | 'project' | 'midterm' | 'final'
   deadline: string
-  is_submitted: boolean
-  score: number | null
   max_score: number
   description?: string
 }
@@ -118,14 +101,15 @@ const TYPE_COLORS: Record<string, string> = {
 }
 
 export default function AssignmentTab({ classId }: AssignmentTabProps) {
-  const navigate = useNavigate()
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading, setLoading] = useState(true)
   const [sorting, setSorting] = useState<SortingState>([])
 
-  // Modal state
+  // Modal states
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null)
-  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+  const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false)
+  const [isResubmit, setIsResubmit] = useState(false) // true nếu đang nộp lại bài đã nộp
 
   const fetchAssignments = useCallback(async () => {
     setLoading(true)
@@ -159,33 +143,34 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
     fetchAssignments()
   }, [fetchAssignments])
 
-  // Stats
+  // Stats - chỉ hiển thị tổng số bài tập
   const stats = useMemo(() => {
-    const total = assignments.length
-    const submitted = assignments.filter((a) => a.is_submitted).length
-    const graded = assignments.filter((a) => a.score !== null).length
-    return { total, submitted, graded }
+    return { total: assignments.length }
   }, [assignments])
 
-  // Handle submit button click
-  const handleSubmitClick = (e: React.MouseEvent, assignment: Assignment) => {
-    e.stopPropagation() // Prevent row click
+  // Handle row click - mở modal chi tiết
+  const handleRowClick = (assignment: Assignment) => {
     setSelectedAssignment(assignment)
-    setIsModalOpen(true)
+    setIsDetailModalOpen(true)
+  }
+
+  // Handle submit click từ detail modal
+  const handleOpenSubmitModal = (resubmit: boolean = false) => {
+    setIsResubmit(resubmit)
+    setIsDetailModalOpen(false)
+    setIsSubmitModalOpen(true)
   }
 
   // Handle submission success
   const handleSubmitSuccess = () => {
-    // Update local state to mark as submitted
-    if (selectedAssignment) {
-      setAssignments((prev) => prev.map((a) => (a.id === selectedAssignment.id ? { ...a, is_submitted: true } : a)))
-    }
+    // Refresh để cập nhật UI
+    fetchAssignments()
   }
 
   // Check if deadline has passed
   const isOverdue = (deadline: string) => new Date(deadline) < new Date()
 
-  // Table columns
+  // Table columns - chỉ hiển thị STT, Tiêu đề, Loại, Deadline, Xem chi tiết
   const columns = useMemo<ColumnDef<Assignment>[]>(
     () => [
       {
@@ -234,7 +219,7 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
           const date = new Date(row.original.deadline)
           const overdue = isOverdue(row.original.deadline)
           return (
-            <Text color={overdue && !row.original.is_submitted ? 'red.500' : 'gray.600'} fontSize='sm'>
+            <Text color={overdue ? 'red.500' : 'gray.600'} fontSize='sm'>
               {date.toLocaleDateString('vi-VN')}
             </Text>
           )
@@ -242,68 +227,28 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
         size: 100
       },
       {
-        accessorKey: 'is_submitted',
-        header: 'Trạng thái',
-        cell: ({ row }) => (
-          <Badge
-            colorPalette={row.original.is_submitted ? 'green' : 'yellow'}
-            variant='solid'
-            borderRadius='full'
-            size='sm'
-          >
-            {row.original.is_submitted ? 'Đã nộp' : 'Chưa nộp'}
-          </Badge>
-        ),
-        size: 90
-      },
-      {
-        accessorKey: 'score',
-        header: 'Điểm',
-        cell: ({ row }) => (
-          <Text fontWeight='semibold' color={row.original.score !== null ? '#dd7323' : 'gray.400'} fontSize='sm'>
-            {row.original.score !== null ? `${row.original.score}` : '—'}
-          </Text>
-        ),
-        size: 60
-      },
-      {
         id: 'actions',
         header: '',
-        cell: ({ row }) => {
-          const assignment = row.original
-          const overdue = isOverdue(assignment.deadline)
-
-          // Only show submit button if not submitted
-          if (assignment.is_submitted) {
-            return (
-              <Box display='flex' justifyContent='center' w='full'>
-                <Text fontSize='xs' color='green.600' fontWeight='medium'>
-                  ✓
-                </Text>
-              </Box>
-            )
-          }
-
-          return (
-            <Box display='flex' justifyContent='center' w='full'>
-              <Button
-                size='xs'
-                bg={overdue ? 'gray.400' : '#dd7323'}
-                color='white'
-                borderRadius='lg'
-                _hover={{ bg: overdue ? 'gray.400' : '#c5651f' }}
-                onClick={(e) => handleSubmitClick(e, assignment)}
-                disabled={overdue}
-                px={3}
-              >
-                <Upload size={12} />
-                <Text ml={1} fontSize='xs'>
-                  Nộp
-                </Text>
-              </Button>
-            </Box>
-          )
-        },
+        cell: ({ row }) => (
+          <Box display='flex' justifyContent='center' w='full'>
+            <Button
+              size='xs'
+              variant='ghost'
+              colorPalette='orange'
+              borderRadius='lg'
+              onClick={(e) => {
+                e.stopPropagation()
+                handleRowClick(row.original)
+              }}
+              px={3}
+            >
+              <Eye size={14} />
+              <Text ml={1} fontSize='xs'>
+                Xem
+              </Text>
+            </Button>
+          </Box>
+        ),
         size: 80
       }
     ],
@@ -319,10 +264,6 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
     getSortedRowModel: getSortedRowModel()
   })
 
-  const handleRowClick = (assignmentId: number) => {
-    navigate(`/student/course-details/${classId}/assignment/${assignmentId}`)
-  }
-
   if (loading) {
     return (
       <VStack gap={3} py={12}>
@@ -335,16 +276,24 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
   return (
     <>
       <VStack gap={6} align='stretch'>
-        {/* Stats */}
+        {/* Stats - chỉ hiển thị tổng số bài tập */}
         <HStack gap={4} flexWrap='wrap'>
-          <Box flex={1} minW='200px'>
-            <StatsCard label='Tổng số bài tập' value={stats.total} icon={FileText} />
-          </Box>
-          <Box flex={1} minW='200px'>
-            <StatsCard label='Đã nộp' value={`${stats.submitted}/${stats.total}`} icon={CheckCircle} />
-          </Box>
-          <Box flex={1} minW='200px'>
-            <StatsCard label='Đã chấm' value={`${stats.graded}/${stats.total}`} icon={Clock} />
+          <Box minW='200px'>
+            <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.200' shadow='sm' p={4}>
+              <HStack gap={3}>
+                <Box p={2} bg='orange.100' borderRadius='lg'>
+                  <FileText size={20} color='#dd7323' />
+                </Box>
+                <VStack align='flex-start' gap={0}>
+                  <Text fontSize='2xl' fontWeight='bold' color='#dd7323'>
+                    {stats.total}
+                  </Text>
+                  <Text fontSize='sm' color='gray.600'>
+                    Tổng số bài tập
+                  </Text>
+                </VStack>
+              </HStack>
+            </Card.Root>
           </Box>
         </HStack>
 
@@ -391,7 +340,7 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
                     cursor='pointer'
                     _hover={{ bg: 'orange.50' }}
                     transition='all 0.2s'
-                    onClick={() => handleRowClick(row.original.id)}
+                    onClick={() => handleRowClick(row.original)}
                   >
                     {row.getVisibleCells().map((cell) => (
                       <Table.Cell key={cell.id} py={3} px={3}>
@@ -406,12 +355,23 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
         )}
       </VStack>
 
+      {/* Assignment Detail Modal */}
+      <AssignmentDetailModal
+        isOpen={isDetailModalOpen}
+        onClose={() => setIsDetailModalOpen(false)}
+        assignment={selectedAssignment}
+        classId={String(classId)}
+        onSubmitClick={handleOpenSubmitModal}
+      />
+
       {/* Submission Modal */}
       <SubmissionModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        isOpen={isSubmitModalOpen}
+        onClose={() => setIsSubmitModalOpen(false)}
         assignment={selectedAssignment}
+        classId={String(classId)}
         onSubmitSuccess={handleSubmitSuccess}
+        isResubmit={isResubmit}
       />
     </>
   )

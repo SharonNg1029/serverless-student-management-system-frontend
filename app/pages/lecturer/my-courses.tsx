@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -22,6 +22,7 @@ import StatsCard from '../../components/ui/StatsCard'
 import EmptyState from '../../components/ui/EmptyState'
 import { SelectRoot, SelectTrigger, SelectContent, SelectItem, SelectValueText } from '../../components/ui/select'
 import { lecturerClassApi } from '../../services/lecturerApi'
+import { useAuthStore } from '../../store/authStore'
 
 // Card backgrounds
 const CARD_BACKGROUNDS = [
@@ -62,8 +63,45 @@ const statusCollection = createListCollection({
 
 export default function LecturerMyCourses() {
   const navigate = useNavigate()
+  const { isAuthenticated, isLoading: authLoading, checkAuthStatus } = useAuthStore()
   const [searchKeyword, setSearchKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
+  const [authChecked, setAuthChecked] = useState(false)
+
+  // Check auth status on mount (for page reload)
+  useEffect(() => {
+    const initAuth = async () => {
+      // Nếu đã authenticated từ store, không cần check lại
+      if (isAuthenticated) {
+        setAuthChecked(true)
+        return
+      }
+
+      // Nếu đang loading, đợi
+      if (authLoading) {
+        return
+      }
+
+      // Thử check auth với timeout
+      try {
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Auth check timeout')), 5000)
+        )
+        await Promise.race([checkAuthStatus(), timeoutPromise])
+      } catch (err) {
+        console.error('Auth check failed:', err)
+      }
+      setAuthChecked(true)
+    }
+    initAuth()
+  }, [isAuthenticated, authLoading, checkAuthStatus])
+
+  // Redirect to login if not authenticated after check
+  useEffect(() => {
+    if (authChecked && !isAuthenticated && !authLoading) {
+      navigate('/login')
+    }
+  }, [authChecked, isAuthenticated, authLoading, navigate])
 
   // Fetch ALL classes from API once (không gửi params vì BE không hỗ trợ filter theo keyword)
   const { data: classesData, isLoading } = useQuery({
@@ -73,7 +111,10 @@ export default function LecturerMyCourses() {
       const response = await lecturerClassApi.getClasses()
       console.log('Lecturer classes RAW response:', response)
       return response
-    }
+    },
+    staleTime: 0, // Luôn coi data là stale
+    refetchOnMount: 'always', // Luôn refetch khi mount component
+    enabled: authChecked && isAuthenticated // Chỉ fetch khi đã auth
   })
 
   // Transform API response to local format
@@ -120,12 +161,13 @@ export default function LecturerMyCourses() {
   const activeClasses = allClasses.filter((c: any) => c.status === 1).length
   const totalStudents = allClasses.reduce((sum: number, c: any) => sum + (c.student_count || 0), 0)
 
-  if (isLoading) {
+  // Show loading while checking auth or fetching data
+  if (!authChecked || authLoading || isLoading) {
     return (
       <Box minH='60vh' display='flex' alignItems='center' justifyContent='center' bg='white'>
         <VStack gap={3}>
           <Spinner size='xl' color='#dd7323' borderWidth='4px' />
-          <Text color='gray.600'>Đang tải danh sách lớp...</Text>
+          <Text color='gray.600'>{!authChecked || authLoading ? 'Đang xác thực...' : 'Đang tải danh sách lớp...'}</Text>
         </VStack>
       </Box>
     )

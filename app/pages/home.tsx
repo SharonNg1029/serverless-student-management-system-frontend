@@ -40,12 +40,7 @@ import StatsCard from '../components/ui/StatsCard'
 import type { CalendarAssignment } from '../types'
 
 // Import types from centralized types
-import type { 
-  StudentDashboardStats, 
-  RecentNotification, 
-  StudentEnrolledClassDTO,
-  CalendarDay 
-} from '../types'
+import type { StudentDashboardStats, RecentNotification, StudentEnrolledClassDTO, CalendarDay } from '../types'
 
 // Local type alias for dashboard stats with additional field
 interface DashboardStats extends StudentDashboardStats {
@@ -112,8 +107,9 @@ export default function HomeRoute() {
   const { data: enrolledClasses = [], isLoading: classesLoading } = useQuery<ClassFromAPI[]>({
     queryKey: ['enrolled-classes'],
     queryFn: async () => {
-      const response = await api.get<{ results: ClassFromAPI[] }>('/api/student/classes/class-enrolled')
-      return response.data?.results || []
+      const response = await api.get<{ data: ClassFromAPI[] }>('/api/student/classes/enrolled')
+      // BE trả về { data: [...], count, message, status }
+      return (response.data as any)?.data || response.data?.results || []
     }
   })
 
@@ -383,7 +379,14 @@ export default function HomeRoute() {
           </Card.Root>
 
           {/* Right Column - Mini Calendar */}
-          <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.100' shadow='sm' height='fit-content'>
+          <Card.Root
+            bg='white'
+            borderRadius='xl'
+            border='1px solid'
+            borderColor='orange.100'
+            shadow='sm'
+            height='fit-content'
+          >
             <Card.Header pb={2} pt={5} px={6}>
               <HStack justify='space-between'>
                 <HStack gap={3}>

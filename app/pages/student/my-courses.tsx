@@ -9,6 +9,7 @@ import CourseCard, { type EnrolledClass } from '../../components/ui/CourseCard'
 import PageHeader from '../../components/ui/PageHeader'
 import { useAuthStore } from '../../store/authStore'
 import { toaster } from '../../components/ui/toaster'
+import { studentClassApi } from '../../services/studentApi'
 
 export default function MyCoursesRoute() {
   const [courses, setCourses] = useState<EnrolledClass[]>([])
@@ -23,24 +24,39 @@ export default function MyCoursesRoute() {
     try {
       // Call API to get enrolled classes - GET /api/student/classes/enrolled
       const response = await api.get('/api/student/classes/enrolled')
-      console.log('Enrolled classes response:', response.data)
+      console.log('Enrolled classes full response:', response)
+      console.log('Enrolled classes response.data:', response.data)
 
-      // BE trả về { data: [...], count, message, status }
-      const results = (response.data as any)?.data || response.data?.results || []
+      // BE có thể trả về nhiều format khác nhau:
+      // 1. { data: [...], count, message, status }
+      // 2. { results: [...] }
+      // 3. Array trực tiếp [...]
+      let results: any[] = []
+      if (Array.isArray(response.data)) {
+        results = response.data
+      } else if (response.data?.data && Array.isArray(response.data.data)) {
+        results = response.data.data
+      } else if (response.data?.results && Array.isArray(response.data.results)) {
+        results = response.data.results
+      }
+
+      console.log('Parsed results:', results)
 
       // Map API response to EnrolledClass format
       const mappedCourses: EnrolledClass[] = results.map((c: any) => ({
-        classId: c.id || c.classId || c.class_id || '',
+        classId: c.classId || c.class_id || c.id || '',
         subjectId: c.subjectId || c.subject_id || '',
-        subjectName: c.subjectName || c.name || '',
-        lecturerName: c.lecturerName || c.teacherName || '',
-        totalStudents: c.studentCount || c.student_count || 0,
-        enrolledAt: c.enrolledAt || c.enrolled_at || c.createdAt || ''
+        subjectName: c.subjectName || c.subject_name || c.name || '',
+        lecturerName: c.lecturerName || c.lecturer_name || c.teacherName || c.teacher_name || '',
+        totalStudents: c.studentCount || c.student_count || c.totalStudents || 0,
+        enrolledAt: c.enrolledAt || c.enrolled_at || c.createdAt || c.created_at || ''
       }))
 
+      console.log('Mapped courses:', mappedCourses)
       setCourses(mappedCourses)
     } catch (err: any) {
       console.error('Failed to fetch enrolled courses:', err)
+      console.error('Error response:', err.response)
       const errorMessage = err.response?.data?.message || 'Không thể tải danh sách lớp học. Vui lòng thử lại.'
       setError(errorMessage)
     } finally {
@@ -66,12 +82,9 @@ export default function MyCoursesRoute() {
     }
 
     try {
-      // Call unenroll API - POST /student/enroll with action='unenroll'
-      await api.post('/student/enroll', {
-        class_id: classId,
-        action: 'unenroll',
-        studentId: user.id
-      })
+      // Call unenroll API - POST /api/student/enroll with action='unenroll'
+      // Dùng studentClassApi.unenroll để gửi đúng headers và body format
+      await studentClassApi.unenroll(classId)
 
       // Remove from local state on success
       setCourses(courses.filter((c) => c.classId !== classId))

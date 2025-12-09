@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate, useParams, useLocation } from 'react-router'
-import { Save, ArrowLeft, Library, AlertCircle } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router'
+import { Save, ArrowLeft, Library, AlertCircle, Loader2 } from 'lucide-react'
 import type { Subject } from '../../../types'
 import api from '../../../utils/axios'
 import { toaster } from '../../../components/ui/toaster'
@@ -9,12 +9,9 @@ const EditSubject: React.FC = () => {
   // subjectId từ URL: /admin/subjects-management/edit/:subjectId (chính là codeSubject)
   const { subjectId } = useParams()
   const navigate = useNavigate()
-  const location = useLocation()
-
-  // Lấy data subject từ state (truyền từ list.tsx)
-  const subjectFromState = (location.state as { subject?: Subject })?.subject
 
   const [isLoading, setIsLoading] = useState(false)
+  const [isFetching, setIsFetching] = useState(true) // Loading khi fetch data
   const [notFound, setNotFound] = useState(false)
 
   const [originalData, setOriginalData] = useState<Partial<Subject>>({})
@@ -27,56 +24,64 @@ const EditSubject: React.FC = () => {
     status: 1
   })
 
-  // Load data từ state khi component mount
+  // LUÔN fetch từ API GET /api/admin/subjects/{codeSubject} để lấy đầy đủ data
   useEffect(() => {
-    if (subjectFromState) {
-      // Có data từ state -> dùng luôn, không cần call API
-      const data = {
-        id: subjectFromState.id,
-        codeSubject: subjectFromState.codeSubject,
-        name: subjectFromState.name,
-        credits: subjectFromState.credits,
-        department: subjectFromState.department || '',
-        description: subjectFromState.description || '',
-        status: subjectFromState.status ?? 1
+    const fetchSubjectData = async () => {
+      if (!subjectId) {
+        setNotFound(true)
+        setIsFetching(false)
+        return
       }
-      setFormData(data)
-      setOriginalData(data)
-    } else {
-      // Không có data từ state (user truy cập trực tiếp URL) -> show not found
-      setNotFound(true)
+
+      try {
+        setIsFetching(true)
+        console.log('=== FETCHING SUBJECT DETAIL ===')
+        console.log('Subject ID:', subjectId)
+
+        // Gọi API GET /api/admin/subjects/{codeSubject}
+        const response = await api.get(`/api/admin/subjects/${subjectId}`)
+        console.log('API Response:', response.data)
+
+        // Parse data từ API response
+        // API có thể trả về: { data: {...} } hoặc trực tiếp {...}
+        const apiData = response.data.data || response.data
+
+        // API GET detail trả về đầy đủ: codeSubject, name, credits, description, department, status
+        const data = {
+          id: 0,
+          codeSubject: apiData.codeSubject || apiData.subtitle || subjectId,
+          name: apiData.name || apiData.title || '',
+          credits: apiData.credits || 0,
+          department: apiData.department || '',
+          description: apiData.description || '',
+          status: apiData.status ?? 1
+        }
+
+        console.log('Parsed data:', data)
+        setFormData(data)
+        setOriginalData(data)
+      } catch (error: any) {
+        console.error('Error fetching subject:', error)
+        if (error.response?.status === 404) {
+          setNotFound(true)
+        } else {
+          toaster.create({
+            title: 'Lỗi',
+            description: 'Không thể tải thông tin học phần. Vui lòng thử lại!',
+            type: 'error'
+          })
+        }
+      } finally {
+        setIsFetching(false)
+      }
     }
-  }, [subjectFromState])
+
+    fetchSubjectData()
+  }, [subjectId])
 
   // Check if form has changes
   const hasChanges = (): boolean => {
     return JSON.stringify(formData) !== JSON.stringify(originalData)
-  }
-
-  // Get only changed fields for update
-  const getChangedFields = (): Partial<Subject> => {
-    const changes: Partial<Subject> = {}
-
-    if (formData.codeSubject !== originalData.codeSubject) {
-      changes.codeSubject = formData.codeSubject
-    }
-    if (formData.name !== originalData.name) {
-      changes.name = formData.name
-    }
-    if (formData.credits !== originalData.credits) {
-      changes.credits = formData.credits
-    }
-    if (formData.department !== originalData.department) {
-      changes.department = formData.department
-    }
-    if (formData.description !== originalData.description) {
-      changes.description = formData.description
-    }
-    if (formData.status !== originalData.status) {
-      changes.status = formData.status
-    }
-
-    return changes
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -125,12 +130,31 @@ const EditSubject: React.FC = () => {
 
     setIsLoading(true)
     try {
-      // Get only changed fields for atomic update
-      const payload = getChangedFields()
+      // Prepare payload theo API spec: { name, credits, description, department, status }
+      const payload: Record<string, any> = {}
 
-      console.log('Updating subject with payload:', payload)
+      // Chỉ gửi các field đã thay đổi
+      if (formData.name !== originalData.name) {
+        payload.name = formData.name
+      }
+      if (formData.credits !== originalData.credits) {
+        payload.credits = formData.credits
+      }
+      if (formData.description !== originalData.description) {
+        payload.description = formData.description || ''
+      }
+      if (formData.department !== originalData.department) {
+        payload.department = formData.department || ''
+      }
+      if (formData.status !== originalData.status) {
+        payload.status = formData.status
+      }
 
-      // === GỌI API PATCH /api/admin/subjects/{subjectId} ===
+      console.log('=== UPDATING SUBJECT ===')
+      console.log('Subject ID:', subjectId)
+      console.log('Payload:', payload)
+
+      // === GỌI API PATCH /api/admin/subjects/{codeSubject} ===
       const response = await api.patch(`/api/admin/subjects/${subjectId}`, payload)
 
       console.log('Update response:', response.data)
@@ -192,7 +216,20 @@ const EditSubject: React.FC = () => {
     navigate('/admin/subjects-management/list')
   }
 
-  // Not found state - khi user truy cập trực tiếp URL mà không có data
+  // Loading state khi đang fetch data từ API
+  if (isFetching) {
+    return (
+      <div className='max-w-2xl mx-auto pb-10'>
+        <div className='bg-white rounded-2xl shadow-sm border border-slate-100 p-12 flex flex-col items-center justify-center'>
+          <Loader2 size={48} className='text-[#dd7323] animate-spin mb-3' />
+          <h2 className='text-xl font-bold text-slate-800 mb-2'>Đang tải thông tin...</h2>
+          <p className='text-slate-600'>Vui lòng đợi trong giây lát</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Not found state - khi không tìm thấy học phần
   if (notFound) {
     return (
       <div className='max-w-2xl mx-auto pb-10'>

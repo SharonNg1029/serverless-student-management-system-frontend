@@ -15,11 +15,12 @@ import {
   Textarea,
   Collapsible
 } from '@chakra-ui/react'
-import { MessageSquare, Heart, Pin, ChevronDown, ChevronUp, Send } from 'lucide-react'
+import { MessageSquare, Heart, Pin, ChevronDown, ChevronUp, Send, Trash2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import StatsCard from '../ui/StatsCard'
 import EmptyState from '../ui/EmptyState'
-import api from '../../utils/axios'
+import { studentPostApi } from '../../services/studentApi'
+import { toaster } from '../ui/toaster'
 
 // ============================================
 // MOCK DATA - Set to false to use real API
@@ -138,34 +139,48 @@ const MOCK_COMMENTS: Comment[] = [
 ]
 
 interface Post {
-  id: number
-  title: string
+  id: number | string
+  title?: string
   content: string
-  lecturer_name: string
+  lecturer_name?: string
+  author_name?: string
   lecturer_avatar?: string
-  is_pinned: boolean
-  like_count: number
-  comment_count: number
-  is_liked: boolean
-  created_at: string
+  is_pinned?: boolean
+  isPinned?: boolean
+  like_count?: number
+  likeCount?: number
+  comment_count?: number
+  commentCount?: number
+  is_liked?: boolean
+  isLiked?: boolean
+  created_at?: string
+  createdAt?: string
 }
 
 interface Comment {
-  id: number
+  id: number | string
   content: string
-  sender_name: string
+  sender_name?: string
+  senderName?: string
+  author_name?: string
+  authorName?: string
   sender_avatar?: string
-  sender_role: string
-  created_at: string
+  sender_role?: string
+  senderRole?: string
+  created_at?: string
+  createdAt?: string
 }
 
 interface PostTabProps {
   classId: string | number
 }
 
-// Format relative time
-function getRelativeTime(dateStr: string): string {
+// Format relative time - handle both created_at and createdAt
+function getRelativeTime(dateStr?: string): string {
+  if (!dateStr) return ''
   const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return ''
+
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMins = Math.floor(diffMs / (1000 * 60))
@@ -180,6 +195,11 @@ function getRelativeTime(dateStr: string): string {
   return (
     date.toLocaleDateString('vi-VN') + ' · ' + date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
   )
+}
+
+// Helper to get date from post/comment (handle both formats)
+function getDateStr(item: { created_at?: string; createdAt?: string }): string {
+  return item.created_at || item.createdAt || ''
 }
 
 export default function PostTab({ classId }: PostTabProps) {
@@ -198,11 +218,9 @@ export default function PostTab({ classId }: PostTabProps) {
     }
 
     try {
-      // API: GET /api/student/classes/{class_id}/posts
-      const response = await api.get(`/api/student/classes/${classId}/posts`)
-      console.log('Posts response:', response.data)
-      // Handle different response formats
-      const data = response.data?.results || response.data?.data || response.data || []
+      // API: GET /api/student/classes/{class_id}/posts với special headers
+      const data = await studentPostApi.getPosts(String(classId))
+      console.log('Posts response:', data)
       setPosts(Array.isArray(data) ? data : [])
     } catch (err) {
       console.error('Failed to fetch posts:', err)
@@ -226,19 +244,33 @@ export default function PostTab({ classId }: PostTabProps) {
   // Sort: pinned first, then by created_at DESC
   const sortedPosts = useMemo(() => {
     return [...posts].sort((a, b) => {
-      if (a.is_pinned && !b.is_pinned) return -1
-      if (!a.is_pinned && b.is_pinned) return 1
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      const aPinned = a.is_pinned || a.isPinned
+      const bPinned = b.is_pinned || b.isPinned
+      if (aPinned && !bPinned) return -1
+      if (!aPinned && bPinned) return 1
+      const aDate = new Date(getDateStr(a)).getTime() || 0
+      const bDate = new Date(getDateStr(b)).getTime() || 0
+      return bDate - aDate
     })
   }, [posts])
 
-  const handleLike = async (postId: number, isLiked: boolean) => {
+  const handleLike = async (postId: number | string, isLiked: boolean) => {
     try {
-      await api.post(`/api/student/posts/${postId}/like`, { action: isLiked ? 'unlike' : 'like' })
+      await studentPostApi.toggleLike(String(classId), String(postId))
       setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId ? { ...p, is_liked: !isLiked, like_count: isLiked ? p.like_count - 1 : p.like_count + 1 } : p
-        )
+        prev.map((p) => {
+          if (p.id === postId) {
+            const currentLikes = p.like_count ?? p.likeCount ?? 0
+            return {
+              ...p,
+              is_liked: !isLiked,
+              isLiked: !isLiked,
+              like_count: isLiked ? currentLikes - 1 : currentLikes + 1,
+              likeCount: isLiked ? currentLikes - 1 : currentLikes + 1
+            }
+          }
+          return p
+        })
       )
     } catch (err) {
       console.error('Failed to like post:', err)
@@ -288,10 +320,11 @@ export default function PostTab({ classId }: PostTabProps) {
 interface PostCardProps {
   post: Post
   classId: string | number
-  onLike: (postId: number, isLiked: boolean) => void
+  onLike: (postId: number | string, isLiked: boolean) => void
 }
 
-function PostCard({ post, classId, onLike }: PostCardProps) {
+function PostCard({ post, classId: _classId, onLike }: PostCardProps) {
+  // _classId có thể dùng sau này nếu cần
   const [expanded, setExpanded] = useState(false)
   const [showComments, setShowComments] = useState(false)
   const [comments, setComments] = useState<Comment[]>([])
@@ -299,8 +332,15 @@ function PostCard({ post, classId, onLike }: PostCardProps) {
   const [newComment, setNewComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const contentPreview = post.content.length > 300 ? post.content.slice(0, 300) + '...' : post.content
-  const needsExpand = post.content.length > 300
+  // Handle both field formats
+  const authorName = post.lecturer_name || post.author_name || 'Giảng viên'
+  const isPinned = post.is_pinned || post.isPinned
+  const likeCount = post.like_count ?? post.likeCount ?? 0
+  const commentCount = post.comment_count ?? post.commentCount ?? 0
+  const isLiked = post.is_liked || post.isLiked
+
+  const contentPreview = post.content?.length > 300 ? post.content.slice(0, 300) + '...' : post.content || ''
+  const needsExpand = (post.content?.length || 0) > 300
 
   const fetchComments = async () => {
     if (comments.length > 0) return
@@ -315,8 +355,8 @@ function PostCard({ post, classId, onLike }: PostCardProps) {
     }
 
     try {
-      const response = await api.get<{ data: Comment[] }>(`/api/student/posts/${post.id}/comments`)
-      setComments(response.data.data || [])
+      const data = await studentPostApi.getComments(String(post.id))
+      setComments(data || [])
     } catch (err) {
       console.error('Failed to fetch comments:', err)
     } finally {
@@ -335,15 +375,42 @@ function PostCard({ post, classId, onLike }: PostCardProps) {
     if (!newComment.trim()) return
     setSubmitting(true)
     try {
-      const response = await api.post<{ data: Comment }>(`/api/student/posts/${post.id}/comments`, {
-        content: newComment
+      const newCommentData = await studentPostApi.createComment(String(post.id), {
+        content: newComment.trim()
       })
-      setComments((prev) => [...prev, response.data.data])
+      setComments((prev) => [...prev, newCommentData])
       setNewComment('')
-    } catch (err) {
+      toaster.create({
+        title: 'Đã gửi bình luận',
+        type: 'success'
+      })
+    } catch (err: any) {
       console.error('Failed to submit comment:', err)
+      toaster.create({
+        title: 'Lỗi',
+        description: err.message || 'Không thể gửi bình luận',
+        type: 'error'
+      })
     } finally {
       setSubmitting(false)
+    }
+  }
+
+  const handleDeleteComment = async (commentId: string | number) => {
+    try {
+      await studentPostApi.deleteComment(String(commentId))
+      setComments((prev) => prev.filter((c) => c.id !== commentId))
+      toaster.create({
+        title: 'Đã xóa bình luận',
+        type: 'success'
+      })
+    } catch (err: any) {
+      console.error('Failed to delete comment:', err)
+      toaster.create({
+        title: 'Lỗi',
+        description: err.message || 'Không thể xóa bình luận',
+        type: 'error'
+      })
     }
   }
 
@@ -355,23 +422,23 @@ function PostCard({ post, classId, onLike }: PostCardProps) {
           <HStack gap={3}>
             <Avatar.Root size='md'>
               <Avatar.Image src={post.lecturer_avatar} />
-              <Avatar.Fallback name={post.lecturer_name} />
+              <Avatar.Fallback name={authorName} />
             </Avatar.Root>
             <VStack align='flex-start' gap={0}>
               <HStack gap={2}>
                 <Text fontWeight='semibold' color='gray.800'>
-                  {post.lecturer_name}
+                  {authorName}
                 </Text>
                 <Badge colorPalette='blue' size='sm' borderRadius='full'>
                   Giảng viên
                 </Badge>
               </HStack>
               <Text fontSize='sm' color='gray.500'>
-                {getRelativeTime(post.created_at)}
+                {getRelativeTime(getDateStr(post))}
               </Text>
             </VStack>
           </HStack>
-          {post.is_pinned && (
+          {isPinned && (
             <Badge colorPalette='orange' variant='solid' borderRadius='full'>
               <Pin size={12} />
               <Text ml={1}>Ghim</Text>
@@ -421,16 +488,16 @@ function PostCard({ post, classId, onLike }: PostCardProps) {
           <Button
             variant='ghost'
             size='sm'
-            color={post.is_liked ? 'red.500' : 'gray.600'}
+            color={isLiked ? 'red.500' : 'gray.600'}
             _hover={{ bg: 'red.50' }}
-            onClick={() => onLike(post.id, post.is_liked)}
+            onClick={() => onLike(post.id, !!isLiked)}
           >
-            <Heart size={18} fill={post.is_liked ? 'currentColor' : 'none'} />
-            <Text ml={1}>{post.like_count}</Text>
+            <Heart size={18} fill={isLiked ? 'currentColor' : 'none'} />
+            <Text ml={1}>{likeCount}</Text>
           </Button>
           <Button variant='ghost' size='sm' color='gray.600' _hover={{ bg: 'gray.100' }} onClick={handleToggleComments}>
             <MessageSquare size={18} />
-            <Text ml={1}>{post.comment_count}</Text>
+            <Text ml={1}>{commentCount}</Text>
           </Button>
         </HStack>
 
@@ -447,27 +514,46 @@ function PostCard({ post, classId, onLike }: PostCardProps) {
                 </HStack>
               ) : (
                 <>
-                  {comments.map((comment) => (
-                    <HStack key={comment.id} align='flex-start' gap={3}>
-                      <Avatar.Root size='sm'>
-                        <Avatar.Image src={comment.sender_avatar} />
-                        <Avatar.Fallback name={comment.sender_name} />
-                      </Avatar.Root>
-                      <Box flex={1} bg='gray.50' borderRadius='lg' p={3}>
-                        <HStack gap={2} mb={1}>
-                          <Text fontWeight='semibold' fontSize='sm'>
-                            {comment.sender_name}
+                  {comments.map((comment) => {
+                    const commentAuthor =
+                      comment.sender_name ||
+                      comment.senderName ||
+                      comment.author_name ||
+                      comment.authorName ||
+                      'Ẩn danh'
+                    return (
+                      <HStack key={comment.id} align='flex-start' gap={3}>
+                        <Avatar.Root size='sm'>
+                          <Avatar.Image src={comment.sender_avatar} />
+                          <Avatar.Fallback name={commentAuthor} />
+                        </Avatar.Root>
+                        <Box flex={1} bg='gray.50' borderRadius='lg' p={3}>
+                          <HStack justify='space-between' mb={1}>
+                            <HStack gap={2}>
+                              <Text fontWeight='semibold' fontSize='sm'>
+                                {commentAuthor}
+                              </Text>
+                              <Text fontSize='xs' color='gray.500'>
+                                {getRelativeTime(getDateStr(comment))}
+                              </Text>
+                            </HStack>
+                            <IconButton
+                              aria-label='Xóa bình luận'
+                              size='xs'
+                              variant='ghost'
+                              colorPalette='red'
+                              onClick={() => handleDeleteComment(comment.id)}
+                            >
+                              <Trash2 size={14} />
+                            </IconButton>
+                          </HStack>
+                          <Text fontSize='sm' color='gray.700'>
+                            {comment.content}
                           </Text>
-                          <Text fontSize='xs' color='gray.500'>
-                            {getRelativeTime(comment.created_at)}
-                          </Text>
-                        </HStack>
-                        <Text fontSize='sm' color='gray.700'>
-                          {comment.content}
-                        </Text>
-                      </Box>
-                    </HStack>
-                  ))}
+                        </Box>
+                      </HStack>
+                    )
+                  })}
 
                   {/* New Comment Input */}
                   <HStack gap={2} mt={2}>

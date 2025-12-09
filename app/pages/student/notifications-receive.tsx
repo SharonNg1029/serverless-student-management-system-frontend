@@ -20,7 +20,7 @@ interface Notification {
   id: string
   title: string
   content: string
-  type: 'system' | 'class' | 'personal'
+  type: 'system' | 'class'
   class_id?: string
   className?: string
   sent_at: string
@@ -28,35 +28,43 @@ interface Notification {
 }
 
 // Map BE type to UI type
-const mapNotificationType = (type?: string): 'system' | 'class' | 'personal' => {
+const mapNotificationType = (type?: string): 'system' | 'class' => {
   switch (type?.toUpperCase()) {
     case 'SYSTEM_ALERT':
     case 'SYSTEM':
       return 'system'
     case 'CLASS':
     case 'INFO':
-      return 'class'
-    case 'PERSONAL':
-      return 'personal'
     default:
-      return 'system'
+      return 'class'
   }
 }
 
 export default function NotificationsReceiveRoute() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<'all' | 'system' | 'class' | 'personal' | 'unread'>('all')
+  const [filter, setFilter] = useState<'all' | 'system' | 'class'>('all')
 
   const fetchNotifications = useCallback(async () => {
     setLoading(true)
     try {
-      // API: GET /api/notifications
-      const response = await api.get<{ results: NotificationFromAPI[] }>('/api/notifications')
-      console.log('Notifications response:', response.data)
+      // Gọi cả 2 API: system và class notifications
+      const [systemResponse, classResponse] = await Promise.all([
+        api.get('/api/student/notifications', { params: { type: 'system' } }),
+        api.get('/api/student/notifications', { params: { type: 'class' } })
+      ])
 
-      // Transform API response to local format
-      const mappedNotifications: Notification[] = (response.data.results || []).map((n) => ({
+      console.log('System notifications:', systemResponse.data)
+      console.log('Class notifications:', classResponse.data)
+
+      // BE trả về { data: [...], count, message, status }
+      const systemNotis = (systemResponse.data as any)?.data || systemResponse.data?.results || []
+      const classNotis = (classResponse.data as any)?.data || classResponse.data?.results || []
+
+      // Combine and transform
+      const allNotifications = [...systemNotis, ...classNotis]
+
+      const mappedNotifications: Notification[] = allNotifications.map((n: NotificationFromAPI) => ({
         id: String(n.id),
         title: n.title || 'Thông báo',
         content: n.content || '',
@@ -105,9 +113,7 @@ export default function NotificationsReceiveRoute() {
   const getFilteredNotifications = () => {
     let filtered = notifications
 
-    if (filter === 'unread') {
-      filtered = notifications.filter((n) => !n.read)
-    } else if (filter !== 'all') {
+    if (filter !== 'all') {
       filtered = notifications.filter((n) => n.type === filter)
     }
 
@@ -120,8 +126,6 @@ export default function NotificationsReceiveRoute() {
         return '⚙️'
       case 'class':
         return '📚'
-      case 'personal':
-        return '💬'
       default:
         return '🔔'
     }
@@ -133,8 +137,6 @@ export default function NotificationsReceiveRoute() {
         return 'border-l-slate-400 bg-slate-50'
       case 'class':
         return 'border-l-blue-500 bg-blue-50'
-      case 'personal':
-        return 'border-l-purple-500 bg-purple-50'
       default:
         return 'border-l-slate-400 bg-slate-50'
     }
@@ -167,7 +169,7 @@ export default function NotificationsReceiveRoute() {
 
         {/* Filter Tabs */}
         <div className='flex gap-2 mb-6 overflow-x-auto pb-2'>
-          {(['all', 'unread', 'system', 'class', 'personal'] as const).map((type) => (
+          {(['all', 'system', 'class'] as const).map((type) => (
             <button
               key={type}
               onClick={() => setFilter(type)}
@@ -177,15 +179,7 @@ export default function NotificationsReceiveRoute() {
                   : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'
               }`}
             >
-              {type === 'all'
-                ? 'Tất cả'
-                : type === 'unread'
-                  ? 'Chưa đọc'
-                  : type === 'system'
-                    ? 'Hệ thống'
-                    : type === 'class'
-                      ? 'Lớp học'
-                      : 'Cá nhân'}
+              {type === 'all' ? 'Tất cả' : type === 'system' ? 'Hệ thống' : 'Lớp học'}
             </button>
           ))}
         </div>

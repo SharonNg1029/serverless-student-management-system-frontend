@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { Send, Loader2, BookOpen, Users, Mail } from 'lucide-react'
+import { Send, Loader2, BookOpen, Users } from 'lucide-react'
 import { Box, VStack, HStack, Text, Card, Spinner } from '@chakra-ui/react'
 import PageHeader from '../../components/ui/PageHeader'
 import { toaster } from '../../components/ui/toaster'
-import api from '../../utils/axios'
+import { lecturerClassApi } from '../../services/lecturerApi'
+import { fetchAuthSession } from '@aws-amplify/auth'
 
 interface ClassDTO {
   id: string
@@ -20,27 +21,29 @@ export default function LecturerNotificationsSendPage() {
   const [selectedClassId, setSelectedClassId] = useState('')
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
-  const [type, setType] = useState<'INFO' | 'SYSTEM_ALERT'>('INFO')
+  // Lecturer chỉ gửi được thông báo lớp (type: "class"), Admin mới gửi được system
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Fetch lecturer's classes
+  // Fetch lecturer's classes - sử dụng lecturerClassApi với header đặc biệt
   const fetchClasses = useCallback(async () => {
     try {
       setLoadingClasses(true)
-      const response = await api.get('/api/lecturer/classes')
-      console.log('Lecturer classes response:', response.data)
+      // API này cần header đặc biệt (cả Authorization và user-idToken đều dùng idToken)
+      const response = await lecturerClassApi.getClasses()
+      console.log('Lecturer classes response:', response)
 
+      // BE trả về { data: [...], count, message, status }
       let classData: any[] = []
-      if (Array.isArray(response.data)) {
-        classData = response.data
-      } else if (response.data?.results) {
-        classData = response.data.results
-      } else if (response.data?.data) {
-        classData = response.data.data
+      if (Array.isArray(response)) {
+        classData = response
+      } else if ((response as any)?.data) {
+        classData = (response as any).data
+      } else if ((response as any)?.results) {
+        classData = (response as any).results
       }
 
       const transformedClasses: ClassDTO[] = classData.map((c: any) => ({
-        id: c.id || c.classId,
+        id: c.id || c.classId || c.class_id,
         name: c.name || c.className || c.title,
         subjectName: c.subjectName || c.subject_name || '',
         studentCount: c.studentCount || c.student_count || 0
@@ -86,16 +89,41 @@ export default function LecturerNotificationsSendPage() {
 
     setIsSubmitting(true)
     try {
+      // Lấy idToken từ Cognito session
+      const session = await fetchAuthSession()
+      const idToken = session.tokens?.idToken?.toString()
+
+      if (!idToken) {
+        throw new Error('Không tìm thấy token xác thực')
+      }
+
       // API: POST /api/lecturer/notifications/email
+      // Body theo Swagger: { classId, title, content, type: "class" }
+      // Lecturer chỉ gửi được type "class", Admin mới gửi được "system"
       const payload = {
         classId: selectedClassId,
         title: title.trim(),
         content: content.trim(),
-        type: type
+        type: 'class' // Lecturer luôn gửi thông báo lớp
       }
 
       console.log('Sending notification:', payload)
-      await api.post('/api/lecturer/notifications/email', payload)
+
+      const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+      const response = await fetch(`${baseUrl}/api/lecturer/notifications/email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+          'user-idToken': idToken
+        },
+        body: JSON.stringify(payload)
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.message || 'Không thể gửi thông báo')
+      }
 
       toaster.create({
         title: 'Thành công',
@@ -111,7 +139,7 @@ export default function LecturerNotificationsSendPage() {
       console.error('Error sending notification:', error)
       toaster.create({
         title: 'Lỗi',
-        description: error.response?.data?.message || 'Không thể gửi thông báo. Vui lòng thử lại!',
+        description: error.message || 'Không thể gửi thông báo. Vui lòng thử lại!',
         type: 'error'
       })
     } finally {
@@ -172,35 +200,15 @@ export default function LecturerNotificationsSendPage() {
                   )}
                 </div>
 
-                {/* Notification Type */}
-                <div>
-                  <label className='block text-sm font-bold text-slate-700 mb-2'>Loại thông báo</label>
-                  <div className='grid grid-cols-2 gap-3'>
-                    <button
-                      type='button'
-                      onClick={() => setType('INFO')}
-                      className={`flex items-center justify-center gap-2 p-3 rounded-xl border transition-all ${
-                        type === 'INFO'
-                          ? 'border-[#dd7323] bg-orange-50 text-[#dd7323]'
-                          : 'border-slate-200 text-slate-500 hover:bg-slate-50'
-                      }`}
-                    >
-                      <Mail size={18} />
-                      <span className='text-sm font-semibold'>Thông tin</span>
-                    </button>
-                    <button
-                      type='button'
-                      onClick={() => setType('SYSTEM_ALERT')}
-                      className={`flex items-center justify-center gap-2 p-3 rounded-xl border transition-all ${
-                        type === 'SYSTEM_ALERT'
-                          ? 'border-[#dd7323] bg-orange-50 text-[#dd7323]'
-                          : 'border-slate-200 text-slate-500 hover:bg-slate-50'
-                      }`}
-                    >
-                      <BookOpen size={18} />
-                      <span className='text-sm font-semibold'>Quan trọng</span>
-                    </button>
+                {/* Notification Type Info - Lecturer chỉ gửi được thông báo lớp */}
+                <div className='p-3 bg-blue-50 rounded-xl border border-blue-100'>
+                  <div className='flex items-center gap-2 text-blue-700'>
+                    <BookOpen size={18} />
+                    <span className='text-sm font-semibold'>Thông báo lớp học</span>
                   </div>
+                  <p className='text-xs text-blue-600 mt-1'>
+                    Thông báo sẽ được gửi đến tất cả sinh viên trong lớp đã chọn
+                  </p>
                 </div>
 
                 {/* Title */}
@@ -271,15 +279,11 @@ export default function LecturerNotificationsSendPage() {
             <div>
               <h3 className='text-sm font-bold text-slate-500 uppercase tracking-wider mb-4'>Xem trước</h3>
               <div className='bg-white rounded-2xl shadow-sm border border-slate-100 p-5 relative overflow-hidden'>
-                <div
-                  className={`absolute top-0 left-0 w-1 h-full ${type === 'SYSTEM_ALERT' ? 'bg-orange-500' : 'bg-blue-500'}`}
-                ></div>
+                <div className='absolute top-0 left-0 w-1 h-full bg-blue-500'></div>
                 <div className='flex justify-between items-start mb-2'>
-                  <div
-                    className={`flex items-center gap-2 text-xs font-bold uppercase tracking-wide ${type === 'SYSTEM_ALERT' ? 'text-orange-500' : 'text-blue-500'}`}
-                  >
-                    {type === 'SYSTEM_ALERT' ? <BookOpen size={14} /> : <Mail size={14} />}
-                    <span>{type === 'SYSTEM_ALERT' ? 'Thông báo quan trọng' : 'Thông tin'}</span>
+                  <div className='flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-blue-500'>
+                    <BookOpen size={14} />
+                    <span>Thông báo lớp</span>
                   </div>
                   <span className='text-xs text-slate-400'>Vừa xong</span>
                 </div>
@@ -300,7 +304,7 @@ export default function LecturerNotificationsSendPage() {
 
               <div className='mt-6 bg-orange-50 p-4 rounded-xl border border-orange-100'>
                 <h4 className='flex items-center gap-2 text-sm font-bold text-orange-700 mb-2'>
-                  <Mail size={16} />
+                  <Send size={16} />
                   Lưu ý
                 </h4>
                 <p className='text-xs text-orange-600/80 leading-relaxed'>

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { useNavigate } from 'react-router'
 import {
   Box,
   Text,
@@ -19,17 +18,19 @@ import {
   useReactTable,
   getCoreRowModel,
   getSortedRowModel,
-  getFilteredRowModel,
   flexRender,
   type ColumnDef,
   type SortingState
 } from '@tanstack/react-table'
-import { FileText, CheckCircle, Clock, ArrowUpDown, Plus, Search, Filter } from 'lucide-react'
+import { FileText, ArrowUpDown, Plus, Search, Edit, Lock, Unlock } from 'lucide-react'
 import StatsCard from '../ui/StatsCard'
 import EmptyState from '../ui/EmptyState'
 import { SelectRoot, SelectTrigger, SelectContent, SelectItem, SelectValueText } from '../ui/select'
 import CreateAssignmentModal, { type AssignmentFormData } from './CreateAssignmentModal'
+import EditAssignmentModal, { type EditAssignmentFormData } from './EditAssignmentModal'
+import AssignmentDetailModal from './AssignmentDetailModal'
 import { lecturerAssignmentApi } from '../../services/lecturerApi'
+import { toaster } from '../ui/toaster'
 import type { AssignmentDTO } from '../../types'
 
 // Filter collections for Select components
@@ -43,12 +44,11 @@ const typeFilterCollection = createListCollection({
   ]
 })
 
-const gradingFilterCollection = createListCollection({
+const statusFilterCollection = createListCollection({
   items: [
     { value: '', label: 'Tất cả trạng thái' },
-    { value: 'graded', label: 'Đã chấm xong' },
-    { value: 'pending', label: 'Chưa chấm xong' },
-    { value: 'no_submission', label: 'Chưa có bài nộp' }
+    { value: 'open', label: 'Đang mở' },
+    { value: 'closed', label: 'Đã đóng' }
   ]
 })
 
@@ -76,7 +76,6 @@ const TYPE_COLORS: Record<string, string> = {
 }
 
 export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
-  const navigate = useNavigate()
   const [assignments, setAssignments] = useState<ExtendedAssignmentDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [sorting, setSorting] = useState<SortingState>([])
@@ -84,10 +83,13 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
   // Filters
   const [searchKeyword, setSearchKeyword] = useState('')
   const [typeFilter, setTypeFilter] = useState<string>('')
-  const [gradingFilter, setGradingFilter] = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState<string>('')
 
   // Modal
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false)
+  const [selectedAssignment, setSelectedAssignment] = useState<ExtendedAssignmentDTO | null>(null)
 
   const fetchAssignments = useCallback(async () => {
     setLoading(true)
@@ -95,7 +97,16 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
       const response = await lecturerAssignmentApi.getAssignments(classId)
       console.log('Assignments response:', response)
       // BE trả về { data: [...], count, message, status }
-      const data = (response as any)?.data || response?.results || []
+      const rawData = (response as any)?.data || response?.results || []
+      // Transform camelCase từ API sang snake_case cho UI
+      const data = rawData.map((item: any) => ({
+        ...item,
+        is_published: item.isPublished ?? item.is_published,
+        max_score: item.maxScore ?? item.max_score,
+        submission_count: item.submissionCount ?? item.submission_count ?? 0,
+        created_at: item.createdAt ?? item.created_at,
+        updated_at: item.updatedAt ?? item.updated_at
+      }))
       setAssignments(data)
     } catch (err) {
       console.error('Failed to fetch assignments:', err)
@@ -117,41 +128,25 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
       // Type filter
       const matchesType = !typeFilter || a.type === typeFilter
 
-      // Grading status filter
-      let matchesGrading = true
-      if (gradingFilter === 'graded') {
-        matchesGrading = (a.graded_count || 0) >= (a.submission_count || 0) && (a.submission_count || 0) > 0
-      } else if (gradingFilter === 'pending') {
-        matchesGrading = (a.graded_count || 0) < (a.submission_count || 0)
-      } else if (gradingFilter === 'no_submission') {
-        matchesGrading = (a.submission_count || 0) === 0
+      // Status filter (open/closed based on isPublished)
+      let matchesStatus = true
+      if (statusFilter === 'open') {
+        matchesStatus = a.is_published === true
+      } else if (statusFilter === 'closed') {
+        matchesStatus = a.is_published === false
       }
 
-      return matchesSearch && matchesType && matchesGrading
+      return matchesSearch && matchesType && matchesStatus
     })
-  }, [assignments, searchKeyword, typeFilter, gradingFilter])
+  }, [assignments, searchKeyword, typeFilter, statusFilter])
 
   // Stats
   const stats = useMemo(() => {
     const total = assignments.length
-    const published = assignments.filter((a) => a.is_published).length
-    const pendingGrade = assignments.filter((a) => (a.graded_count || 0) < (a.submission_count || 0)).length
-    return { total, published, pendingGrade }
+    const openCount = assignments.filter((a) => a.is_published).length
+    const closedCount = assignments.filter((a) => !a.is_published).length
+    return { total, openCount, closedCount }
   }, [assignments])
-
-  // Get grading status
-  const getGradingStatus = (assignment: ExtendedAssignmentDTO) => {
-    const submitted = assignment.submission_count || 0
-    const graded = assignment.graded_count || 0
-
-    if (submitted === 0) {
-      return { label: 'Chưa có bài nộp', color: 'gray' }
-    }
-    if (graded >= submitted) {
-      return { label: 'Đã chấm xong', color: 'green' }
-    }
-    return { label: `Chưa chấm (${graded}/${submitted})`, color: 'yellow' }
-  }
 
   // Table columns
   const columns = useMemo<ColumnDef<ExtendedAssignmentDTO>[]>(
@@ -214,20 +209,83 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
         size: 80
       },
       {
-        accessorKey: 'grading_status',
-        header: 'Trạng thái chấm',
+        accessorKey: 'is_published',
+        header: 'Trạng thái',
         cell: ({ row }) => {
-          const status = getGradingStatus(row.original)
+          const isOpen = row.original.is_published
           return (
-            <Badge colorPalette={status.color} variant='solid' borderRadius='full' size='sm'>
-              {status.label}
+            <Badge
+              colorPalette={isOpen ? 'green' : 'red'}
+              variant='solid'
+              borderRadius='full'
+              size='sm'
+              cursor='pointer'
+              _hover={{ opacity: 0.8 }}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleToggleStatus(row.original)
+              }}
+              title={isOpen ? 'Click để đóng bài tập' : 'Click để mở bài tập'}
+            >
+              {isOpen ? 'Đang mở' : 'Đã đóng'}
             </Badge>
           )
         },
-        size: 140
+        size: 100
+      },
+      {
+        id: 'actions',
+        header: 'Thao tác',
+        cell: ({ row }) => (
+          <HStack gap={1}>
+            <Button
+              size='xs'
+              variant='ghost'
+              color='blue.500'
+              _hover={{ bg: 'blue.50' }}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleEditClick(row.original)
+              }}
+              title='Chỉnh sửa'
+            >
+              <Edit size={14} />
+            </Button>
+            {row.original.is_published ? (
+              <Button
+                size='xs'
+                variant='ghost'
+                color='green.500'
+                _hover={{ bg: 'green.50' }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleCloseAssignment(row.original)
+                }}
+                title='Đóng bài tập'
+              >
+                <Unlock size={14} />
+              </Button>
+            ) : (
+              <Button
+                size='xs'
+                variant='ghost'
+                color='red.500'
+                _hover={{ bg: 'red.50' }}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  handleReopenAssignment(row.original)
+                }}
+                title='Mở lại bài tập'
+              >
+                <Lock size={14} />
+              </Button>
+            )}
+          </HStack>
+        ),
+        size: 80
       }
     ],
-    []
+    [classId]
   )
 
   const table = useReactTable({
@@ -240,31 +298,146 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
   })
 
   const handleRowClick = (assignment: ExtendedAssignmentDTO) => {
-    const submitted = assignment.submission_count || 0
-    const graded = assignment.graded_count || 0
-
-    // Nếu đã chấm hết hoặc chưa có bài nộp -> chuyển sang trang xem điểm (view mode)
-    // Nếu còn bài chưa chấm -> chuyển sang trang chấm điểm (grading mode)
-    if (submitted === 0 || graded >= submitted) {
-      navigate(`/lecturer/classes/${classId}/assignments/${assignment.id}?mode=view`)
-    } else {
-      navigate(`/lecturer/classes/${classId}/assignments/${assignment.id}?mode=grade`)
-    }
+    // Mở modal hiển thị chi tiết assignment
+    setSelectedAssignment(assignment)
+    setIsDetailModalOpen(true)
   }
 
   const handleCreateAssignment = async (data: AssignmentFormData) => {
-    // Use new API: POST /lecturer/assignments
+    // Use new API: POST /api/lecturer/assignments
     await lecturerAssignmentApi.createAssignment({
-      class_id: parseInt(classId),
+      class_id: classId, // Pass as string, API will handle
       title: data.title,
       description: data.description,
       type: data.type,
       deadline: data.deadline,
       max_score: data.max_score,
-      is_published: data.is_published,
-      files: data.files
+      weight: data.weight, // Trọng số từ form
+      is_published: data.is_published
     })
     fetchAssignments()
+  }
+
+  const handleEditClick = (assignment: ExtendedAssignmentDTO) => {
+    setSelectedAssignment(assignment)
+    setIsEditModalOpen(true)
+  }
+
+  // Toggle status (open/close) directly from table
+  const handleToggleStatus = async (assignment: ExtendedAssignmentDTO) => {
+    const newStatus = !assignment.is_published
+    const actionText = newStatus ? 'mở' : 'đóng'
+
+    try {
+      const assignmentId = assignment.id?.toString().replace('ASSIGNMENT#', '') || ''
+      await lecturerAssignmentApi.updateAssignment(assignmentId, classId, {
+        isPublished: newStatus
+      })
+
+      toaster.create({
+        title: 'Thành công',
+        description: `Đã ${actionText} bài tập "${assignment.title}"`,
+        type: 'success'
+      })
+
+      fetchAssignments()
+    } catch (err: any) {
+      console.error('Failed to toggle assignment status:', err)
+      toaster.create({
+        title: 'Lỗi',
+        description: err.response?.data?.message || `Không thể ${actionText} bài tập`,
+        type: 'error'
+      })
+    }
+  }
+
+  const handleUpdateAssignment = async (data: EditAssignmentFormData) => {
+    if (!selectedAssignment) return
+
+    try {
+      // Extract assignment ID (remove prefix if exists)
+      const assignmentId = selectedAssignment.id?.toString().replace('ASSIGNMENT#', '') || ''
+
+      await lecturerAssignmentApi.updateAssignment(assignmentId, classId, {
+        title: data.title,
+        description: data.description,
+        type: data.type,
+        maxScore: data.maxScore,
+        weight: data.weight,
+        deadline: data.deadline,
+        isPublished: data.isPublished
+      })
+
+      toaster.create({
+        title: 'Thành công',
+        description: 'Đã cập nhật bài tập',
+        type: 'success'
+      })
+
+      fetchAssignments()
+    } catch (err: any) {
+      console.error('Failed to update assignment:', err)
+      toaster.create({
+        title: 'Lỗi',
+        description: err.response?.data?.message || 'Không thể cập nhật bài tập',
+        type: 'error'
+      })
+      throw err
+    }
+  }
+
+  const handleCloseAssignment = async (assignment: ExtendedAssignmentDTO) => {
+    if (!confirm(`Bạn có chắc muốn đóng bài tập "${assignment.title}"? Sinh viên sẽ không thể nộp bài nữa.`)) {
+      return
+    }
+
+    try {
+      const assignmentId = assignment.id?.toString().replace('ASSIGNMENT#', '') || ''
+      // Đóng bài tập = set isPublished: false
+      await lecturerAssignmentApi.updateAssignment(assignmentId, classId, {
+        isPublished: false
+      })
+
+      toaster.create({
+        title: 'Thành công',
+        description: 'Đã đóng bài tập',
+        type: 'success'
+      })
+
+      fetchAssignments()
+    } catch (err: any) {
+      console.error('Failed to close assignment:', err)
+      toaster.create({
+        title: 'Lỗi',
+        description: err.response?.data?.message || 'Không thể đóng bài tập',
+        type: 'error'
+      })
+    }
+  }
+
+  const handleReopenAssignment = async (assignment: ExtendedAssignmentDTO) => {
+    try {
+      const assignmentId = assignment.id?.toString().replace('ASSIGNMENT#', '') || ''
+      // Mở lại bài tập = set isPublished: true
+      await lecturerAssignmentApi.updateAssignment(assignmentId, classId, {
+        isPublished: true
+      })
+
+      toaster.create({
+        title: 'Thành công',
+        description: 'Đã mở lại bài tập',
+        type: 'success'
+      })
+
+      fetchAssignments()
+    } catch (err: any) {
+      console.error('Failed to reopen assignment:', err)
+      toaster.create({
+        title: 'Lỗi',
+        description: err.response?.data?.message || 'Không thể mở lại bài tập',
+        type: 'error'
+      })
+    }
   }
 
   if (loading) {
@@ -285,10 +458,10 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
             <StatsCard label='Tổng số bài tập' value={stats.total} icon={FileText} />
           </Box>
           <Box minW='180px'>
-            <StatsCard label='Đã xuất bản' value={`${stats.published}/${stats.total}`} icon={CheckCircle} />
+            <StatsCard label='Đang mở' value={stats.openCount} icon={Unlock} />
           </Box>
           <Box minW='180px'>
-            <StatsCard label='Chờ chấm điểm' value={stats.pendingGrade} icon={Clock} />
+            <StatsCard label='Đang đóng' value={stats.closedCount} icon={Lock} />
           </Box>
         </HStack>
         <Button
@@ -343,19 +516,19 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
               </SelectContent>
             </SelectRoot>
 
-            {/* Grading Status Filter */}
+            {/* Status Filter (Open/Closed) */}
             <SelectRoot
-              collection={gradingFilterCollection}
-              value={gradingFilter ? [gradingFilter] : ['']}
-              onValueChange={(details) => setGradingFilter(details.value[0] || '')}
+              collection={statusFilterCollection}
+              value={statusFilter ? [statusFilter] : ['']}
+              onValueChange={(details) => setStatusFilter(details.value[0] || '')}
               size='md'
-              w='190px'
+              w='170px'
             >
               <SelectTrigger borderColor='orange.200' borderRadius='xl' _hover={{ borderColor: '#dd7323' }}>
                 <SelectValueText placeholder='Tất cả trạng thái' />
               </SelectTrigger>
               <SelectContent>
-                {gradingFilterCollection.items.map((item) => (
+                {statusFilterCollection.items.map((item) => (
                   <SelectItem key={item.value} item={item}>
                     {item.label}
                   </SelectItem>
@@ -428,6 +601,28 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onSubmit={handleCreateAssignment}
+        classId={classId}
+      />
+
+      {/* Edit Assignment Modal */}
+      <EditAssignmentModal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false)
+          setSelectedAssignment(null)
+        }}
+        onSubmit={handleUpdateAssignment}
+        assignment={selectedAssignment}
+      />
+
+      {/* Assignment Detail Modal */}
+      <AssignmentDetailModal
+        isOpen={isDetailModalOpen}
+        onClose={() => {
+          setIsDetailModalOpen(false)
+          setSelectedAssignment(null)
+        }}
+        assignment={selectedAssignment}
         classId={classId}
       />
     </VStack>

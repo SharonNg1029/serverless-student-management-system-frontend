@@ -199,7 +199,8 @@ export default function ProfileRoute() {
         } catch (e) {
           console.error('Logout error:', e)
         }
-        navigate('/login')
+        // Use window.location.href for full page reload to clear all state
+        window.location.href = '/login'
       }, 2000)
     } catch (error: any) {
       toaster.create({
@@ -273,10 +274,15 @@ export default function ProfileRoute() {
                     src={
                       avatarPreview ||
                       profile?.avatar ||
-                      `https://ui-avatars.com/api/?name=${profile?.name || 'User'}&background=dd7323&color=fff&size=128`
+                      `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'User')}&background=dd7323&color=fff&size=128`
                     }
                     alt={profile?.name}
                     className='w-full h-full object-cover'
+                    onError={(e) => {
+                      // Fallback nếu ảnh không load được
+                      const target = e.target as HTMLImageElement
+                      target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'User')}&background=dd7323&color=fff&size=128`
+                    }}
                   />
                 </div>
                 {isEditing && (

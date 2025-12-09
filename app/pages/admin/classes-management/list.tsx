@@ -49,22 +49,10 @@ const ClassesList: React.FC = () => {
   const [lecturers, setLecturers] = useState<LecturerDTO[]>([])
   const [loading, setLoading] = useState<boolean>(true)
 
-  // States for filters (bỏ subjectId vì API không hỗ trợ)
-  const [keyword, setKeyword] = useState<string>('')
-  const [teacherId, setTeacherId] = useState<string>('')
-  const [status, setStatus] = useState<string>('')
-
-  // Debounced keyword for API calls
-  const [debouncedKeyword, setDebouncedKeyword] = useState<string>('')
-
-  // Debounce keyword input (wait 500ms after user stops typing)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedKeyword(keyword)
-    }, 500)
-
-    return () => clearTimeout(timer)
-  }, [keyword])
+  // States for filters
+  const [keyword, setKeyword] = useState<string>('') // Filter client-side
+  const [teacherId, setTeacherId] = useState<string>('') // Filter client-side
+  const [status, setStatus] = useState<string>('') // Filter gọi API
 
   // Fetch lecturers for filter dropdown
   useEffect(() => {
@@ -104,14 +92,13 @@ const ClassesList: React.FC = () => {
   // Store all classes from API (before client-side filtering)
   const [allClasses, setAllClasses] = useState<ClassDisplay[]>([])
 
-  // Fetch classes from API - chỉ filter theo keyword và status
+  // Fetch classes from API - chỉ gọi khi status thay đổi
   const fetchClasses = async () => {
     try {
       setLoading(true)
 
-      // Build query params - CHỈ keyword và status (API không hỗ trợ teacher_id)
+      // Build query params - CHỈ status (keyword và teacherId filter client-side)
       const params: Record<string, string> = {}
-      if (debouncedKeyword.trim()) params.keyword = debouncedKeyword.trim()
       if (status !== '') params.status = status
 
       // === GỌI API GET /api/admin/classes ===
@@ -147,22 +134,33 @@ const ClassesList: React.FC = () => {
     }
   }
 
-  // Load data on mount and when API filters change (keyword, status)
+  // Load data on mount và khi status thay đổi (keyword, teacherId filter client-side)
   useEffect(() => {
     fetchClasses()
-  }, [debouncedKeyword, status])
+  }, [status])
 
-  // Client-side filter by teacherId
+  // Client-side filter by keyword và teacherId
   useEffect(() => {
-    if (teacherId) {
-      // Filter classes by teacherId on client-side
-      const filtered = allClasses.filter((c) => c.teacherId === teacherId)
-      setClasses(filtered)
-    } else {
-      // No teacher filter - show all
-      setClasses(allClasses)
+    let filtered = [...allClasses]
+
+    // Filter by keyword (tên lớp, mã lớp, học phần)
+    if (keyword.trim()) {
+      const searchTerm = keyword.trim().toLowerCase()
+      filtered = filtered.filter(
+        (c) =>
+          c.name.toLowerCase().includes(searchTerm) ||
+          c.classCode.toLowerCase().includes(searchTerm) ||
+          c.subjectId.toLowerCase().includes(searchTerm)
+      )
     }
-  }, [teacherId, allClasses])
+
+    // Filter by teacherId
+    if (teacherId) {
+      filtered = filtered.filter((c) => c.teacherId === teacherId)
+    }
+
+    setClasses(filtered)
+  }, [keyword, teacherId, allClasses])
 
   // Handle clear filters
   const handleClearFilters = () => {

@@ -2,17 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Trophy, TrendingUp, Award } from 'lucide-react'
-import {
-  Box,
-  Text,
-  VStack,
-  HStack,
-  Card,
-  Circle,
-  Spinner,
-  Grid,
-  NativeSelect
-} from '@chakra-ui/react'
+import { Box, Text, VStack, HStack, Card, Circle, Spinner, Grid, NativeSelect } from '@chakra-ui/react'
 import api from '../../utils/axios'
 import { ErrorDisplay } from '../../components/ui/ErrorDisplay'
 import PageHeader from '../../components/ui/PageHeader'
@@ -60,8 +50,9 @@ export default function RankingRoute() {
     setLoading(true)
     setError(null)
     try {
-      const response = await api.get<{ results: EnrolledClassFromAPI[] }>('/api/student/classes/class-enrolled')
-      const enrolledClasses = response.data?.results || []
+      const response = await api.get<{ data: EnrolledClassFromAPI[] }>('/api/student/classes/enrolled')
+      // BE trả về { data: [...], count, message, status }
+      const enrolledClasses = (response.data as any)?.data || response.data?.results || []
 
       const mappedClasses: ClassOption[] = enrolledClasses.map((c) => ({
         id: c.class_id,
@@ -148,7 +139,11 @@ export default function RankingRoute() {
         <Box maxW='4xl' mx='auto'>
           <PageHeader icon={Trophy} title='Xếp hạng cá nhân' subtitle='Xem xếp hạng của bạn trong từng lớp học' />
           <Box px={6}>
-            <EmptyState icon={Trophy} title='Bạn chưa đăng ký lớp học nào' description='Hãy đăng ký lớp học để xem xếp hạng' />
+            <EmptyState
+              icon={Trophy}
+              title='Bạn chưa đăng ký lớp học nào'
+              description='Hãy đăng ký lớp học để xem xếp hạng'
+            />
           </Box>
         </Box>
       </Box>

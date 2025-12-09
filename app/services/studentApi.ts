@@ -587,22 +587,30 @@ export const studentPostApi = {
    * Tạo comment cho một post
    *
    * API này yêu cầu header đặc biệt:
-   * Sử dụng axios để có headers tự động (Authorization + user-idToken)
-   * Sử dụng S3 Presigned URL flow cho file attachment
+   * - Authorization: Bearer <idToken>
+   * - user-idToken: <idToken>
+   *
+   * Body: { content, parentId, attachmentUrl, postId }
    */
   createComment: async (
     postId: string,
     request: { content: string; parentId?: string; attachment?: File }
   ): Promise<PostCommentDTO> => {
-    // Upload file to S3 first if any (dùng axios)
-    let fileKey: string | undefined
+    // Lấy idToken từ Cognito session
+    const session = await fetchAuthSession()
+    const idToken = session.tokens?.idToken?.toString()
+
+    if (!idToken) {
+      throw new Error('Không tìm thấy token xác thực')
+    }
+
+    // Upload file to S3 first if any
+    let attachmentUrl: string | undefined
     if (request.attachment) {
-      // Step 1: Get presigned URL (dùng axios)
       const { data: presignedData } = await api.get('/api/upload/presigned-url', {
         params: { fileName: request.attachment.name }
       })
 
-      // Step 2: Upload to S3 (không dùng Authorization header)
       const uploadResponse = await fetch(presignedData.uploadUrl, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/octet-stream' },
@@ -613,17 +621,55 @@ export const studentPostApi = {
         throw new Error('Lỗi khi upload file lên S3')
       }
 
-      fileKey = presignedData.fileKey
+      attachmentUrl = presignedData.fileKey
     }
 
-    // Step 3: Call API with fileKey (dùng axios)
-    const { data } = await api.post(`/api/student/posts/${postId}/comments`, {
+    // Call API with special headers
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    // URL encode postId vì có thể chứa ký tự đặc biệt (timestamp format)
+    const encodedPostId = encodeURIComponent(postId)
+    const url = `${baseUrl}/api/student/posts/${encodedPostId}/comments`
+
+    const requestBody = {
       content: request.content,
-      postId: postId,
-      parentId: request.parentId,
-      fileKey: fileKey
+      parentId: request.parentId || null,
+      attachmentUrl: attachmentUrl || null,
+      postId: postId // Giữ nguyên postId trong body (không encode)
+    }
+
+    // Debug logging
+    console.log('=== STUDENT CREATE COMMENT DEBUG ===')
+    console.log('Original postId:', postId)
+    console.log('Encoded postId:', encodedPostId)
+    console.log('URL:', url)
+    console.log('Method: POST')
+    console.log('Headers:', {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken.substring(0, 50)}...`,
+      'user-idToken': `${idToken.substring(0, 50)}...`
+    })
+    console.log('Body:', JSON.stringify(requestBody, null, 2))
+    console.log('=== END DEBUG ===')
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+        'user-idToken': idToken
+      },
+      body: JSON.stringify(requestBody)
     })
 
+    console.log('Response status:', response.status)
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      console.log('Error response:', errorData)
+      throw new Error(errorData.message || 'Lỗi khi tạo bình luận')
+    }
+
+    const data = await response.json()
     return data.data || data
   },
 
@@ -642,7 +688,13 @@ export const studentPostApi = {
     }
 
     const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
-    const response = await fetch(`${baseUrl}/api/student/posts/${postId}/comments`, {
+    // URL encode postId vì có thể chứa ký tự đặc biệt (timestamp format)
+    const encodedPostId = encodeURIComponent(postId)
+    console.log('=== GET COMMENTS DEBUG ===')
+    console.log('Original postId:', postId)
+    console.log('Encoded postId:', encodedPostId)
+
+    const response = await fetch(`${baseUrl}/api/student/posts/${encodedPostId}/comments`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

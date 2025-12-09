@@ -139,7 +139,9 @@ const MOCK_COMMENTS: Comment[] = [
 ]
 
 interface Post {
-  id: number | string
+  id?: number | string
+  postId?: string // BE có thể trả về postId thay vì id
+  post_id?: string // hoặc post_id
   title?: string
   content: string
   lecturer_name?: string
@@ -254,12 +256,14 @@ export default function PostTab({ classId }: PostTabProps) {
     })
   }, [posts])
 
-  const handleLike = async (postId: number | string, isLiked: boolean) => {
+  const handleLike = async (postIdParam: number | string, isLiked: boolean) => {
     try {
-      await studentPostApi.toggleLike(String(classId), String(postId))
+      await studentPostApi.toggleLike(String(classId), String(postIdParam))
       setPosts((prev) =>
         prev.map((p) => {
-          if (p.id === postId) {
+          // Check all possible ID fields
+          const pId = p.postId || p.post_id || p.id
+          if (pId === postIdParam) {
             const currentLikes = p.like_count ?? p.likeCount ?? 0
             return {
               ...p,
@@ -307,9 +311,10 @@ export default function PostTab({ classId }: PostTabProps) {
         />
       ) : (
         <VStack gap={4} align='stretch'>
-          {sortedPosts.map((post) => (
-            <PostCard key={post.id} post={post} classId={classId} onLike={handleLike} />
-          ))}
+          {sortedPosts.map((post) => {
+            const key = post.postId || post.post_id || post.id || Math.random()
+            return <PostCard key={key} post={post} classId={classId} onLike={handleLike} />
+          })}
         </VStack>
       )}
     </VStack>
@@ -331,6 +336,14 @@ function PostCard({ post, classId: _classId, onLike }: PostCardProps) {
   const [loadingComments, setLoadingComments] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  // Get post ID - BE có thể trả về id, postId, hoặc post_id
+  const postId = String(post.postId || post.post_id || post.id || '')
+
+  // Debug log
+  console.log('=== STUDENT POST DATA DEBUG ===')
+  console.log('Post object:', post)
+  console.log('Post ID extracted:', postId)
 
   // Handle both field formats
   const authorName = post.lecturer_name || post.author_name || 'Giảng viên'
@@ -355,7 +368,8 @@ function PostCard({ post, classId: _classId, onLike }: PostCardProps) {
     }
 
     try {
-      const data = await studentPostApi.getComments(String(post.id))
+      console.log('Fetching comments for postId:', postId)
+      const data = await studentPostApi.getComments(postId)
       setComments(data || [])
     } catch (err) {
       console.error('Failed to fetch comments:', err)
@@ -373,9 +387,19 @@ function PostCard({ post, classId: _classId, onLike }: PostCardProps) {
 
   const handleSubmitComment = async () => {
     if (!newComment.trim()) return
+    if (!postId) {
+      console.error('Post ID is empty!')
+      toaster.create({
+        title: 'Lỗi',
+        description: 'Không tìm thấy ID bài viết',
+        type: 'error'
+      })
+      return
+    }
     setSubmitting(true)
     try {
-      const newCommentData = await studentPostApi.createComment(String(post.id), {
+      console.log('Creating comment for postId:', postId)
+      const newCommentData = await studentPostApi.createComment(postId, {
         content: newComment.trim()
       })
       setComments((prev) => [...prev, newCommentData])
@@ -490,7 +514,7 @@ function PostCard({ post, classId: _classId, onLike }: PostCardProps) {
             size='sm'
             color={isLiked ? 'red.500' : 'gray.600'}
             _hover={{ bg: 'red.50' }}
-            onClick={() => onLike(post.id, !!isLiked)}
+            onClick={() => onLike(postId, !!isLiked)}
           >
             <Heart size={18} fill={isLiked ? 'currentColor' : 'none'} />
             <Text ml={1}>{likeCount}</Text>

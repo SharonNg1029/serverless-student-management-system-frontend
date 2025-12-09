@@ -386,15 +386,9 @@ export default function LoginRoute() {
                 <span>Hoặc</span>
               </div>
 
-              {/* Google Sign-In tạm ẩn - cần cấu hình origin trong Google Cloud Console */}
-              {/* 
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: '16px' }}>
-                <GoogleSignInButton 
-                  onSuccess={handleGoogleSuccess}
-                  onError={handleGoogleError}
-                />
+                <GoogleSignInButton onSuccess={handleGoogleSuccess} onError={handleGoogleError} />
               </div>
-              */}
             </form>
           ) : (
             <form onSubmit={handleNewPasswordSubmit} className='login-form'>

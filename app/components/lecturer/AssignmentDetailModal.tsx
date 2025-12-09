@@ -13,11 +13,14 @@ import {
   Spinner,
   Table,
   Link,
-  Button
+  Button,
+  Input
 } from '@chakra-ui/react'
-import { FileText, Calendar, Award, Clock, Users, Lock, Unlock, Download, User } from 'lucide-react'
+import { FileText, Calendar, Award, Clock, Users, Lock, Unlock, Download, User, Check, X, Edit2 } from 'lucide-react'
 import type { AssignmentDTO } from '../../types'
 import { lecturerAssignmentApi } from '../../services/lecturerApi'
+import { toaster } from '../ui/toaster'
+import { fetchAuthSession } from '@aws-amplify/auth'
 
 // Submission interface từ BE
 interface SubmissionDTO {
@@ -63,6 +66,11 @@ const TYPE_COLORS: Record<string, string> = {
 export default function AssignmentDetailModal({ isOpen, onClose, assignment, classId }: AssignmentDetailModalProps) {
   const [submissions, setSubmissions] = useState<SubmissionDTO[]>([])
   const [loadingSubmissions, setLoadingSubmissions] = useState(false)
+  // State cho chấm điểm
+  const [gradingStudentId, setGradingStudentId] = useState<string | null>(null)
+  const [gradeInput, setGradeInput] = useState('')
+  const [feedbackInput, setFeedbackInput] = useState('')
+  const [isGrading, setIsGrading] = useState(false)
 
   // Fetch submissions khi modal mở
   const fetchSubmissions = useCallback(async () => {
@@ -85,8 +93,119 @@ export default function AssignmentDetailModal({ isOpen, onClose, assignment, cla
       fetchSubmissions()
     } else {
       setSubmissions([])
+      setGradingStudentId(null)
+      setGradeInput('')
+      setFeedbackInput('')
     }
   }, [isOpen, assignment, fetchSubmissions])
+
+  // Hàm chấm điểm
+  const handleGrade = async (studentId: string) => {
+    if (!assignment || !classId) return
+
+    const score = parseFloat(gradeInput)
+    if (isNaN(score) || score < 0 || score > assignment.max_score) {
+      toaster.create({
+        title: 'Lỗi',
+        description: `Điểm phải từ 0 đến ${assignment.max_score}`,
+        type: 'error'
+      })
+      return
+    }
+
+    setIsGrading(true)
+    try {
+      // Lấy idToken từ Cognito session
+      const session = await fetchAuthSession()
+      const idToken = session.tokens?.idToken?.toString()
+
+      if (!idToken) {
+        throw new Error('Không tìm thấy token xác thực')
+      }
+
+      // Normalize assignmentId - ensure ASS_ prefix
+      let normalizedAssignmentId = String(assignment.id)
+      if (!normalizedAssignmentId.startsWith('ASS_') && !normalizedAssignmentId.includes('#')) {
+        normalizedAssignmentId = `ASS_${normalizedAssignmentId}`
+      }
+
+      // Normalize classId - remove CLASS# prefix if present
+      const normalizedClassId = classId.replace('CLASS#', '')
+
+      // API: POST /api/lecturer/assignments/{assignment_id}/update-grades?classId={classId}
+      const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+      const url = `${baseUrl}/api/lecturer/assignments/${normalizedAssignmentId}/update-grades?classId=${normalizedClassId}`
+
+      // Body theo Swagger: { assignmentId, studentId, score, feedback }
+      // Thêm classId vào body để BE có thể verify giảng viên
+      const requestBody = {
+        assignmentId: normalizedAssignmentId,
+        studentId: studentId,
+        score: score,
+        feedback: feedbackInput || '',
+        classId: normalizedClassId
+      }
+
+      console.log('=== GRADE API DEBUG ===')
+      console.log('URL:', url)
+      console.log('Method: POST')
+      console.log('classId (original):', classId)
+      console.log('classId (normalized):', normalizedClassId)
+      console.log('assignmentId (original):', assignment.id)
+      console.log('assignmentId (normalized):', normalizedAssignmentId)
+      console.log('studentId:', studentId)
+      console.log('Request body:', JSON.stringify(requestBody, null, 2))
+
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+          'user-idToken': idToken
+        },
+        body: JSON.stringify(requestBody)
+      })
+
+      console.log('Response status:', response.status)
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.log('Error response:', errorData)
+        throw new Error(errorData.message || 'Lỗi khi chấm điểm')
+      }
+
+      toaster.create({
+        title: 'Thành công',
+        description: 'Đã chấm điểm cho học sinh',
+        type: 'success'
+      })
+
+      // Cập nhật UI
+      setSubmissions((prev) =>
+        prev.map((sub) => {
+          const subStudentId = sub.student_id || sub.studentId
+          if (subStudentId === studentId) {
+            return { ...sub, score: score, feedback: feedbackInput }
+          }
+          return sub
+        })
+      )
+
+      // Reset form
+      setGradingStudentId(null)
+      setGradeInput('')
+      setFeedbackInput('')
+    } catch (err: any) {
+      console.error('Failed to grade:', err)
+      toaster.create({
+        title: 'Lỗi',
+        description: err.message || 'Không thể chấm điểm',
+        type: 'error'
+      })
+    } finally {
+      setIsGrading(false)
+    }
+  }
 
   if (!assignment) return null
 
@@ -244,57 +363,116 @@ export default function AssignmentDetailModal({ isOpen, onClose, assignment, cla
                           </Table.Row>
                         </Table.Header>
                         <Table.Body>
-                          {submissions.map((sub, idx) => (
-                            <Table.Row key={sub.id || idx}>
-                              <Table.Cell py={2} px={3}>
-                                <HStack gap={2}>
-                                  <User size={14} color='#666' />
-                                  <Text fontSize='sm' color='gray.700'>
-                                    {sub.student_name || sub.studentName || sub.student_id || sub.studentId || 'N/A'}
+                          {submissions.map((sub, idx) => {
+                            const studentId = sub.student_id || sub.studentId || ''
+                            const isEditing = gradingStudentId === studentId
+
+                            return (
+                              <Table.Row key={sub.id || idx}>
+                                <Table.Cell py={2} px={3}>
+                                  <HStack gap={2}>
+                                    <User size={14} color='#666' />
+                                    <Text fontSize='sm' color='gray.700'>
+                                      {sub.student_name || sub.studentName || studentId || 'N/A'}
+                                    </Text>
+                                  </HStack>
+                                </Table.Cell>
+                                <Table.Cell py={2} px={3}>
+                                  {sub.file_url || sub.fileUrl ? (
+                                    <Link
+                                      href={sub.file_url || sub.fileUrl}
+                                      target='_blank'
+                                      color='blue.500'
+                                      fontSize='sm'
+                                    >
+                                      <HStack gap={1}>
+                                        <Download size={12} />
+                                        <Text>{sub.file_name || sub.fileName || 'Tải file'}</Text>
+                                      </HStack>
+                                    </Link>
+                                  ) : (
+                                    <Text fontSize='sm' color='gray.400'>
+                                      -
+                                    </Text>
+                                  )}
+                                </Table.Cell>
+                                <Table.Cell py={2} px={3}>
+                                  <Text fontSize='xs' color='gray.600'>
+                                    {sub.submitted_at || sub.submittedAt || sub.created_at || sub.createdAt
+                                      ? new Date(
+                                          sub.submitted_at || sub.submittedAt || sub.created_at || sub.createdAt!
+                                        ).toLocaleString('vi-VN')
+                                      : '-'}
                                   </Text>
-                                </HStack>
-                              </Table.Cell>
-                              <Table.Cell py={2} px={3}>
-                                {sub.file_url || sub.fileUrl ? (
-                                  <Link
-                                    href={sub.file_url || sub.fileUrl}
-                                    target='_blank'
-                                    color='blue.500'
-                                    fontSize='sm'
-                                  >
+                                </Table.Cell>
+                                <Table.Cell py={2} px={3}>
+                                  {isEditing ? (
                                     <HStack gap={1}>
-                                      <Download size={12} />
-                                      <Text>{sub.file_name || sub.fileName || 'Tải file'}</Text>
+                                      <Input
+                                        size='xs'
+                                        type='number'
+                                        min={0}
+                                        max={assignment.max_score}
+                                        value={gradeInput}
+                                        onChange={(e) => setGradeInput(e.target.value)}
+                                        placeholder='Điểm'
+                                        w='60px'
+                                        borderColor='orange.300'
+                                        _focus={{ borderColor: '#dd7323' }}
+                                      />
+                                      <Button
+                                        size='xs'
+                                        colorPalette='green'
+                                        onClick={() => handleGrade(studentId)}
+                                        loading={isGrading}
+                                        p={1}
+                                      >
+                                        <Check size={14} />
+                                      </Button>
+                                      <Button
+                                        size='xs'
+                                        variant='ghost'
+                                        onClick={() => {
+                                          setGradingStudentId(null)
+                                          setGradeInput('')
+                                          setFeedbackInput('')
+                                        }}
+                                        p={1}
+                                      >
+                                        <X size={14} />
+                                      </Button>
                                     </HStack>
-                                  </Link>
-                                ) : (
-                                  <Text fontSize='sm' color='gray.400'>
-                                    -
-                                  </Text>
-                                )}
-                              </Table.Cell>
-                              <Table.Cell py={2} px={3}>
-                                <Text fontSize='xs' color='gray.600'>
-                                  {sub.submitted_at || sub.submittedAt || sub.created_at || sub.createdAt
-                                    ? new Date(
-                                        sub.submitted_at || sub.submittedAt || sub.created_at || sub.createdAt!
-                                      ).toLocaleString('vi-VN')
-                                    : '-'}
-                                </Text>
-                              </Table.Cell>
-                              <Table.Cell py={2} px={3}>
-                                {sub.score !== null && sub.score !== undefined ? (
-                                  <Badge colorPalette='green' variant='subtle'>
-                                    {sub.score}/{assignment.max_score}
-                                  </Badge>
-                                ) : (
-                                  <Badge colorPalette='yellow' variant='subtle'>
-                                    Chưa chấm
-                                  </Badge>
-                                )}
-                              </Table.Cell>
-                            </Table.Row>
-                          ))}
+                                  ) : (
+                                    <HStack gap={2}>
+                                      {sub.score !== null && sub.score !== undefined ? (
+                                        <Badge colorPalette='green' variant='subtle'>
+                                          {sub.score}/{assignment.max_score}
+                                        </Badge>
+                                      ) : (
+                                        <Badge colorPalette='yellow' variant='subtle'>
+                                          Chưa chấm
+                                        </Badge>
+                                      )}
+                                      <Button
+                                        size='xs'
+                                        variant='ghost'
+                                        colorPalette='orange'
+                                        onClick={() => {
+                                          setGradingStudentId(studentId)
+                                          setGradeInput(sub.score?.toString() || '')
+                                          setFeedbackInput(sub.feedback || '')
+                                        }}
+                                        p={1}
+                                        title='Chấm điểm'
+                                      >
+                                        <Edit2 size={12} />
+                                      </Button>
+                                    </HStack>
+                                  )}
+                                </Table.Cell>
+                              </Table.Row>
+                            )
+                          })}
                         </Table.Body>
                       </Table.Root>
                     </Box>

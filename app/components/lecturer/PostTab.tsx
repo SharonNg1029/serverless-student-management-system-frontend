@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Box, Text, VStack, HStack, Spinner, Card, Avatar, Badge, Button } from '@chakra-ui/react'
-import { MessageSquare, Heart, Pin, ChevronDown, ChevronUp, Plus, Download, File, XCircle } from 'lucide-react'
+import { MessageSquare, Heart, Pin, ChevronDown, ChevronUp, Plus, Download, File, XCircle, Trash2 } from 'lucide-react'
 import { toaster } from '../ui/toaster'
 import ReactMarkdown from 'react-markdown'
 import StatsCard from '../ui/StatsCard'
@@ -152,6 +152,22 @@ export default function LecturerPostTab({ classId }: PostTabProps) {
   )
 }
 
+// Comment interface - support both string and number id from BE
+interface CommentDTO {
+  id: string | number
+  content: string
+  author_id?: string
+  authorId?: string
+  author_name?: string
+  authorName?: string
+  author_avatar?: string
+  authorAvatar?: string
+  created_at?: string
+  createdAt?: string
+  attachment_url?: string
+  attachmentUrl?: string
+}
+
 // Post Card Component
 interface PostCardProps {
   post: PostDTO
@@ -162,8 +178,91 @@ interface PostCardProps {
 function PostCard({ post, classId, onDeleted }: PostCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [showComments, setShowComments] = useState(false)
+  const [comments, setComments] = useState<CommentDTO[]>([])
+  const [loadingComments, setLoadingComments] = useState(false)
+  const [newComment, setNewComment] = useState('')
+  const [submittingComment, setSubmittingComment] = useState(false)
+
+  // Get post ID - BE có thể trả về id, postId, hoặc post_id
+  const postId = String((post as any).id || (post as any).postId || (post as any).post_id || '')
+
+  // Debug log
+  console.log('=== POST DATA DEBUG ===')
+  console.log('Post object:', post)
+  console.log('Post ID extracted:', postId)
+
   const contentPreview = post.content.length > 300 ? post.content.slice(0, 300) + '...' : post.content
   const needsExpand = post.content.length > 300
+
+  // Fetch comments
+  const fetchComments = async () => {
+    if (!postId) {
+      console.error('Post ID is empty!')
+      return
+    }
+    setLoadingComments(true)
+    try {
+      console.log('Fetching comments for postId:', postId)
+      const data = await lecturerPostApi.getComments(postId)
+      setComments(Array.isArray(data) ? data : [])
+    } catch (err: any) {
+      console.error('Failed to fetch comments:', err)
+      toaster.create({
+        title: 'Lỗi',
+        description: err.message || 'Không thể tải bình luận',
+        type: 'error'
+      })
+    } finally {
+      setLoadingComments(false)
+    }
+  }
+
+  // Toggle comments section
+  const handleToggleComments = () => {
+    if (!showComments) {
+      fetchComments()
+    }
+    setShowComments(!showComments)
+  }
+
+  // Submit new comment
+  const handleSubmitComment = async () => {
+    if (!newComment.trim()) return
+    if (!postId) {
+      console.error('Post ID is empty!')
+      toaster.create({
+        title: 'Lỗi',
+        description: 'Không tìm thấy ID bài viết',
+        type: 'error'
+      })
+      return
+    }
+
+    setSubmittingComment(true)
+    try {
+      console.log('Creating comment for postId:', postId)
+      await lecturerPostApi.createComment(postId, {
+        content: newComment.trim()
+      })
+      toaster.create({
+        title: 'Thành công',
+        description: 'Đã gửi bình luận',
+        type: 'success'
+      })
+      setNewComment('')
+      fetchComments() // Refresh comments
+    } catch (err: any) {
+      console.error('Failed to create comment:', err)
+      toaster.create({
+        title: 'Lỗi',
+        description: err.message || 'Không thể gửi bình luận',
+        type: 'error'
+      })
+    } finally {
+      setSubmittingComment(false)
+    }
+  }
 
   const handleClosePost = async () => {
     if (
@@ -175,7 +274,7 @@ function PostCard({ post, classId, onDeleted }: PostCardProps) {
 
     setDeleting(true)
     try {
-      await lecturerPostApi.deletePost(String(post.id), classId)
+      await lecturerPostApi.deletePost(postId, classId)
       toaster.create({
         title: 'Đã đóng bài viết',
         type: 'success'
@@ -293,7 +392,13 @@ function PostCard({ post, classId, onDeleted }: PostCardProps) {
               <Heart size={18} />
               <Text ml={1}>{post.like_count}</Text>
             </Button>
-            <Button variant='ghost' size='sm' color='gray.600' _hover={{ bg: 'gray.100' }}>
+            <Button
+              variant='ghost'
+              size='sm'
+              color={showComments ? '#dd7323' : 'gray.600'}
+              _hover={{ bg: 'orange.50' }}
+              onClick={handleToggleComments}
+            >
               <MessageSquare size={18} />
               <Text ml={1}>{post.comment_count}</Text>
             </Button>
@@ -310,6 +415,112 @@ function PostCard({ post, classId, onDeleted }: PostCardProps) {
             <Text ml={1}>Đóng bài viết</Text>
           </Button>
         </HStack>
+
+        {/* Comments Section */}
+        {showComments && (
+          <Box mt={4} pt={4} borderTop='1px solid' borderColor='gray.100'>
+            {/* New Comment Input */}
+            <HStack gap={2} mb={4}>
+              <input
+                type='text'
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder='Viết bình luận...'
+                className='flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:border-orange-400'
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    handleSubmitComment()
+                  }
+                }}
+              />
+              <Button
+                size='sm'
+                bg='#dd7323'
+                color='white'
+                _hover={{ bg: '#c5651f' }}
+                onClick={handleSubmitComment}
+                loading={submittingComment}
+                disabled={!newComment.trim()}
+              >
+                Gửi
+              </Button>
+            </HStack>
+
+            {/* Comments List */}
+            {loadingComments ? (
+              <HStack justify='center' py={4}>
+                <Spinner size='sm' color='#dd7323' />
+                <Text fontSize='sm' color='gray.500'>
+                  Đang tải bình luận...
+                </Text>
+              </HStack>
+            ) : comments.length === 0 ? (
+              <Text fontSize='sm' color='gray.500' textAlign='center' py={4}>
+                Chưa có bình luận nào
+              </Text>
+            ) : (
+              <VStack gap={3} align='stretch'>
+                {comments.map((comment) => {
+                  const commentId = String(
+                    (comment as any).id || (comment as any).commentId || (comment as any).comment_id || ''
+                  )
+                  return (
+                    <HStack key={commentId} gap={3} align='flex-start' p={3} bg='gray.50' borderRadius='lg'>
+                      <Avatar.Root size='sm'>
+                        <Avatar.Image src={comment.author_avatar || comment.authorAvatar} />
+                        <Avatar.Fallback name={comment.author_name || comment.authorName || 'User'} />
+                      </Avatar.Root>
+                      <VStack align='flex-start' gap={1} flex={1}>
+                        <HStack gap={2} justify='space-between' w='full'>
+                          <HStack gap={2}>
+                            <Text fontSize='sm' fontWeight='semibold' color='gray.800'>
+                              {comment.author_name || comment.authorName || 'Người dùng'}
+                            </Text>
+                            <Text fontSize='xs' color='gray.500'>
+                              {getRelativeTime(comment.created_at || comment.createdAt || '')}
+                            </Text>
+                          </HStack>
+                          <Button
+                            size='xs'
+                            variant='ghost'
+                            color='red.500'
+                            _hover={{ bg: 'red.50' }}
+                            onClick={async () => {
+                              if (!confirm('Bạn có chắc muốn xóa bình luận này?')) return
+                              try {
+                                await lecturerPostApi.deleteComment(commentId, postId)
+                                toaster.create({
+                                  title: 'Đã xóa bình luận',
+                                  type: 'success'
+                                })
+                                fetchComments()
+                              } catch (err: any) {
+                                console.error('Failed to delete comment:', err)
+                                toaster.create({
+                                  title: 'Lỗi',
+                                  description: err.message || 'Không thể xóa bình luận',
+                                  type: 'error'
+                                })
+                              }
+                            }}
+                            p={1}
+                            title='Xóa bình luận'
+                          >
+                            <Trash2 size={14} />
+                          </Button>
+                        </HStack>
+                        <Text fontSize='sm' color='gray.700'>
+                          {comment.content}
+                        </Text>
+                      </VStack>
+                    </HStack>
+                  )
+                })}
+              </VStack>
+            )}
+          </Box>
+        )}
       </Card.Body>
     </Card.Root>
   )

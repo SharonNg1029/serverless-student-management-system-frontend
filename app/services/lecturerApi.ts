@@ -674,30 +674,113 @@ export const lecturerPostApi = {
   },
 
   /**
-   * POST /posts/{post_id}/comments
-   * Tạo comment cho một post (cho GV hoặc HS)
+   * POST /api/lecturer/posts/{post_id}/comments
+   * GV bình luận (Gửi link ảnh từ S3)
+   * Body: { content, parentId, attachmentUrl, postId }
+   *
+   * API này yêu cầu header đặc biệt:
+   * - Authorization: Bearer <idToken>
+   * - user-idToken: <idToken>
    */
-  createComment: async (postId: number, data: CreateCommentRequest) => {
-    const formData = new FormData()
-    formData.append('content', data.content)
-    if (data.parent_id) {
-      formData.append('parent_id', data.parent_id.toString())
-    }
-    if (data.attachment) {
-      formData.append('attachment', data.attachment)
+  createComment: async (
+    postId: string,
+    data: { content: string; parentId?: string; attachment?: File }
+  ): Promise<PostCommentDTO> => {
+    // Lấy idToken từ Cognito session
+    const session = await fetchAuthSession()
+    const idToken = session.tokens?.idToken?.toString()
+
+    if (!idToken) {
+      throw new Error('Không tìm thấy token xác thực')
     }
 
-    const response = await api.post<PostCommentDTO>(`/posts/${postId}/comments`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+    // Upload file to S3 first if any
+    let attachmentUrl: string | undefined
+    if (data.attachment) {
+      const { data: presignedData } = await api.get('/api/upload/presigned-url', {
+        params: { fileName: data.attachment.name }
+      })
+
+      const uploadResponse = await fetch(presignedData.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: data.attachment
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error('Lỗi khi upload file lên S3')
+      }
+
+      attachmentUrl = presignedData.fileKey
+    }
+
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const response = await fetch(`${baseUrl}/api/lecturer/posts/${postId}/comments`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+        'user-idToken': idToken
+      },
+      body: JSON.stringify({
+        content: data.content,
+        parentId: data.parentId || null,
+        attachmentUrl: attachmentUrl || null,
+        postId: postId
+      })
     })
-    return response.data
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || 'Lỗi khi tạo bình luận')
+    }
+
+    const result = await response.json()
+    return result.data || result
   },
 
   /**
-   * GET /posts/{post_id}/comments
+   * GET /api/lecturer/posts/{post_id}/comments
+   * Lấy danh sách bình luận của bài viết
+   *
+   * API này yêu cầu header đặc biệt:
+   * - Authorization: Bearer <idToken>
+   * - user-idToken: <idToken>
+   */
+  getComments: async (postId: string): Promise<PostCommentDTO[]> => {
+    // Lấy idToken từ Cognito session
+    const session = await fetchAuthSession()
+    const idToken = session.tokens?.idToken?.toString()
+
+    if (!idToken) {
+      throw new Error('Không tìm thấy token xác thực')
+    }
+
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const response = await fetch(`${baseUrl}/api/lecturer/posts/${postId}/comments`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+        'user-idToken': idToken
+      }
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || 'Lỗi khi lấy bình luận')
+    }
+
+    const data = await response.json()
+    // BE trả về { data: [...], count, message, status }
+    return data.data || data.results || (Array.isArray(data) ? data : [])
+  },
+
+  /**
+   * GET /posts/{post_id}/comments (legacy)
    * Lấy danh sách comments của một post
    */
-  getComments: async (postId: number) => {
+  getCommentsLegacy: async (postId: number) => {
     const response = await api.get<{ results: PostCommentDTO[] }>(`/posts/${postId}/comments`)
     return response.data
   },
@@ -714,10 +797,37 @@ export const lecturerPostApi = {
     return response.data
   },
 
-  // Delete comment
-  deleteComment: async (postId: number, commentId: number) => {
-    const response = await api.delete<{ message: string }>(`/posts/${postId}/comments/${commentId}`)
-    return response.data
+  /**
+   * DELETE /api/lecturer/comments/{id}?postId={postId}
+   * Xóa bình luận
+   *
+   * API này yêu cầu header đặc biệt:
+   * - Authorization: Bearer <idToken>
+   * - user-idToken: <idToken>
+   */
+  deleteComment: async (commentId: string, postId: string): Promise<void> => {
+    // Lấy idToken từ Cognito session
+    const session = await fetchAuthSession()
+    const idToken = session.tokens?.idToken?.toString()
+
+    if (!idToken) {
+      throw new Error('Không tìm thấy token xác thực')
+    }
+
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const response = await fetch(`${baseUrl}/api/lecturer/comments/${commentId}?postId=${postId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+        'user-idToken': idToken
+      }
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.message || 'Lỗi khi xóa bình luận')
+    }
   }
 }
 

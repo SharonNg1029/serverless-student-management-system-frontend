@@ -47,6 +47,7 @@ api.interceptors.request.use(
       console.log('idToken exists:', !!idToken)
       console.log('accessToken exists:', !!accessToken)
       console.log('Request URL:', config.url)
+      console.log('Base URL:', BASE_URL)
 
       if (config.headers) {
         // BE yêu cầu:
@@ -54,11 +55,15 @@ api.interceptors.request.use(
         // - user-idToken: idToken (để lấy email/user info)
         if (accessToken) {
           config.headers.Authorization = `Bearer ${accessToken}`
+          console.log('Set Authorization header')
         }
         if (idToken) {
           config.headers['user-idToken'] = idToken
+          console.log('Set user-idToken header')
         }
       }
+
+      console.log('Final headers:', Object.keys(config.headers || {}))
 
       return config
     } catch (error) {

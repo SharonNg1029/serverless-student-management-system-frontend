@@ -217,7 +217,7 @@ const AdminLayout: React.FC = () => {
         </header>
 
         {/* Scrollable Content Area */}
-        <div className='flex-1 overflow-y-auto p-4 lg:p-8 scroll-smooth bg-slate-50'>
+        <div className='flex-1 overflow-y-auto overflow-x-hidden p-4 lg:p-8 scroll-smooth bg-slate-50 min-h-0'>
           <Outlet />
         </div>
       </main>

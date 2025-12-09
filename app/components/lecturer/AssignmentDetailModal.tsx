@@ -157,7 +157,7 @@ export default function AssignmentDetailModal({ isOpen, onClose, assignment, cla
       console.log('Request body:', JSON.stringify(requestBody, null, 2))
 
       const response = await fetch(url, {
-        method: 'PUT',
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${idToken}`,

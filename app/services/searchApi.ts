@@ -33,14 +33,35 @@ export interface SearchResponse {
 // ============================================
 
 /**
- * GET /api/search?type=classes|subjects&keyword=xxx
+ * GET /api/search?type=classes|subjects&keyword=xxx&filters=xxx
  * Tìm kiếm lớp học hoặc môn học cho student
+ *
+ * Query params:
+ * - type: 'classes' | 'subjects' (required)
+ * - keyword: từ khóa tìm kiếm (optional)
+ * - filters: filter theo keyword khi type là classes hoặc subjects (optional)
+ *
  * Response: Array trực tiếp [{ id, title, subtitle, type, avatar, extraInfo, createdAt, status }]
  */
 export const search = async (params: SearchParams): Promise<SearchResponse> => {
   try {
-    console.log('Search API params:', params)
-    const response = await api.get('/api/search', { params })
+    // Build query params - dùng filters thay vì keyword cho classes/subjects
+    const queryParams: Record<string, string> = {
+      type: params.type
+    }
+
+    // API yêu cầu dùng filters param cho việc filter classes/subjects
+    if (params.keyword) {
+      queryParams.filters = params.keyword
+    }
+
+    // Nếu có filters riêng thì dùng filters đó (override keyword)
+    if (params.filters) {
+      queryParams.filters = params.filters
+    }
+
+    console.log('Search API params:', queryParams)
+    const response = await api.get('/api/search', { params: queryParams })
     console.log('Search API RAW response:', response)
     console.log('Search API response.data:', response.data)
 

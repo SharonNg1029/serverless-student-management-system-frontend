@@ -184,29 +184,46 @@ export const studentAssignmentApi = {
   },
 
   /**
-   * PUT /api/student/assignments/{assignment_id}/submit
-   * Nộp bài tập (hoặc cập nhật bài nộp)
-   *
-   * Quy trình upload file qua S3 Presigned URL (do Lambda giới hạn 6MB):
-   * 1. Gọi GET /api/upload/presigned-url để lấy uploadUrl và fileKey
-   * 2. Upload file trực tiếp lên S3 bằng PUT uploadUrl
-   * 3. Gọi API submit với fileKey thay vì file
+   * Helper function để upload file lên S3 và trả về fileKey
+   */
+  _uploadFileToS3: async (file: File): Promise<{ fileKey: string }> => {
+    // Lấy presigned URL
+    const { data: presignedData } = await api.get('/api/upload/presigned-url', {
+      params: { fileName: file.name }
+    })
+    console.log('Presigned URL response:', presignedData)
+
+    const { uploadUrl, fileKey } = presignedData
+    if (!uploadUrl || !fileKey) {
+      throw new Error('Không nhận được link upload từ server')
+    }
+
+    // Upload file lên S3
+    console.log('Uploading to S3:', uploadUrl)
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: file
+    })
+
+    if (!uploadResponse.ok) {
+      throw new Error('Lỗi khi upload file lên S3')
+    }
+    console.log('Upload to S3 SUCCESS, fileKey:', fileKey)
+
+    return { fileKey }
+  },
+
+  /**
+   * POST /api/student/submit
+   * Tạo submission mới (lần đầu nộp bài)
+   * Body: { class_id, assignmentId, content, fileUrl, fileName }
    *
    * API này yêu cầu header đặc biệt:
    * - Authorization: Bearer <idToken>
    * - user-idToken: <idToken>
-   *
-   * Path params:
-   * - assignment_id: ID của bài tập (ASS_xxx)
-   *
-   * Query params:
-   * - classId: ID của lớp học
-   * - content: Ghi chú (optional)
-   *
-   * Body (JSON):
-   * - fileKey: Đường dẫn file trên S3 (từ presigned URL response)
    */
-  submitAssignment: async (request: {
+  createSubmission: async (request: {
     classId: string
     assignmentId: string
     file: File
@@ -220,66 +237,135 @@ export const studentAssignmentApi = {
       throw new Error('Không tìm thấy token xác thực')
     }
 
-    // Normalize classId - remove CLASS# prefix if present
+    // Normalize IDs
     const normalizedClassId = request.classId.replace('CLASS#', '')
-
-    // Normalize assignmentId - ensure it has ASS_ prefix
     let normalizedAssignmentId = request.assignmentId
     if (!normalizedAssignmentId.startsWith('ASS_') && !normalizedAssignmentId.includes('#')) {
       normalizedAssignmentId = `ASS_${normalizedAssignmentId}`
     }
     normalizedAssignmentId = normalizedAssignmentId.replace('ASSIGNMENT#', 'ASS_')
 
-    // === BƯỚC 1: Xin link upload (Get Presigned URL) ===
-    // Dùng axios để tự động có headers Authorization + user-idToken
-    console.log('=== SUBMIT ASSIGNMENT STEP 1: Get Presigned URL ===')
-    console.log('fileName:', request.file.name)
+    // Upload file to S3
+    console.log('=== CREATE SUBMISSION: Upload file ===')
+    const { fileKey } = await studentAssignmentApi._uploadFileToS3(request.file)
 
-    const { data: presignedData } = await api.get('/api/upload/presigned-url', {
-      params: { fileName: request.file.name }
+    // Call POST API với header đặc biệt (dùng idToken cho cả Authorization)
+    console.log('=== CREATE SUBMISSION: POST to Backend ===')
+    const requestBody = {
+      class_id: normalizedClassId,
+      assignmentId: normalizedAssignmentId,
+      content: request.content || '',
+      fileUrl: fileKey,
+      fileName: request.file.name
+    }
+    console.log('Request body:', JSON.stringify(requestBody, null, 2))
+
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const response = await fetch(`${baseUrl}/api/student/submit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+        'user-idToken': idToken
+      },
+      body: JSON.stringify(requestBody)
     })
-    console.log('Presigned URL response:', presignedData)
 
-    const { uploadUrl, fileKey } = presignedData
-    if (!uploadUrl || !fileKey) {
-      throw new Error('Không nhận được link upload từ server')
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      console.log('Error response:', errorData)
+      throw new Error(errorData.message || 'Lỗi khi nộp bài')
     }
 
-    // === BƯỚC 2: Upload file lên S3 (Direct Upload) ===
-    console.log('=== SUBMIT ASSIGNMENT STEP 2: Upload to S3 ===')
-    console.log('uploadUrl:', uploadUrl)
-    console.log('fileKey:', fileKey)
+    const data = await response.json()
+    return data.data || data
+  },
 
-    const uploadResponse = await fetch(uploadUrl, {
+  /**
+   * PUT /api/student/assignments/{assignment_id}/submit
+   * Cập nhật submission (nộp lại bài)
+   * Body: { class_id, content, fileUrl, fileName }
+   *
+   * API này yêu cầu header đặc biệt:
+   * - Authorization: Bearer <idToken>
+   * - user-idToken: <idToken>
+   */
+  updateSubmission: async (request: {
+    classId: string
+    assignmentId: string
+    file: File
+    content?: string
+  }): Promise<StudentSubmissionDTO> => {
+    // Lấy idToken từ Cognito session
+    const session = await fetchAuthSession()
+    const idToken = session.tokens?.idToken?.toString()
+
+    if (!idToken) {
+      throw new Error('Không tìm thấy token xác thực')
+    }
+
+    // Normalize IDs
+    const normalizedClassId = request.classId.replace('CLASS#', '')
+    let normalizedAssignmentId = request.assignmentId
+    if (!normalizedAssignmentId.startsWith('ASS_') && !normalizedAssignmentId.includes('#')) {
+      normalizedAssignmentId = `ASS_${normalizedAssignmentId}`
+    }
+    normalizedAssignmentId = normalizedAssignmentId.replace('ASSIGNMENT#', 'ASS_')
+
+    // Upload file to S3
+    console.log('=== UPDATE SUBMISSION: Upload file ===')
+    const { fileKey } = await studentAssignmentApi._uploadFileToS3(request.file)
+
+    // Call PUT API với header đặc biệt (dùng idToken cho cả Authorization)
+    console.log('=== UPDATE SUBMISSION: PUT to Backend ===')
+    const requestBody = {
+      class_id: normalizedClassId,
+      content: request.content || '',
+      fileUrl: fileKey,
+      fileName: request.file.name
+    }
+    console.log('URL:', `/api/student/assignments/${normalizedAssignmentId}/submit`)
+    console.log('Request body:', JSON.stringify(requestBody, null, 2))
+
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const response = await fetch(`${baseUrl}/api/student/assignments/${normalizedAssignmentId}/submit`, {
       method: 'PUT',
       headers: {
-        'Content-Type': 'application/octet-stream'
-        // KHÔNG gửi Authorization header - S3 không hiểu Token của App
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+        'user-idToken': idToken
       },
-      body: request.file
+      body: JSON.stringify(requestBody)
     })
 
-    if (!uploadResponse.ok) {
-      throw new Error('Lỗi khi upload file lên S3')
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      console.log('Error response:', errorData)
+      throw new Error(errorData.message || 'Lỗi khi cập nhật bài nộp')
     }
-    console.log('Upload to S3 SUCCESS')
 
-    // === BƯỚC 3: Gọi API submit với fileKey (dùng axios) ===
-    console.log('=== SUBMIT ASSIGNMENT STEP 3: Submit to Backend ===')
-    console.log('fileKey:', fileKey)
-
-    const { data } = await api.put(
-      `/api/student/assignments/${normalizedAssignmentId}/submit`,
-      { fileKey },
-      {
-        params: {
-          classId: normalizedClassId,
-          content: request.content || undefined
-        }
-      }
-    )
-
+    const data = await response.json()
     return data.data || data
+  },
+
+  /**
+   * submitAssignment - wrapper function để tự động chọn POST hoặc PUT
+   * @param isResubmit - true nếu đang nộp lại (dùng PUT), false nếu nộp mới (dùng POST)
+   */
+  submitAssignment: async (
+    request: {
+      classId: string
+      assignmentId: string
+      file: File
+      content?: string
+    },
+    isResubmit: boolean = false
+  ): Promise<StudentSubmissionDTO> => {
+    if (isResubmit) {
+      return studentAssignmentApi.updateSubmission(request)
+    } else {
+      return studentAssignmentApi.createSubmission(request)
+    }
   },
 
   /**
@@ -354,24 +440,6 @@ export const studentAssignmentApi = {
       return found || null
     }
     return result || null
-  },
-
-  /**
-   * PUT /student/assignments/get-submissions
-   * Cập nhật submission của student
-   */
-  updateSubmission: async (submissionId: number, file: File): Promise<StudentSubmissionDTO> => {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const { data } = await api.put<StudentSubmissionDTO>(
-      `/student/assignments/get-submissions/${submissionId}`,
-      formData,
-      {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      }
-    )
-    return data
   },
 
   /**

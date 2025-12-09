@@ -160,13 +160,16 @@ export default function SubmissionModal({
     }
 
     try {
-      // Gọi API nộp bài với header đặc biệt (cả Authorization và user-idToken đều dùng idToken)
-      await studentAssignmentApi.submitAssignment({
-        classId: classId,
-        assignmentId: String(assignment.id),
-        file: selectedFile,
-        content: comment.trim() || undefined
-      })
+      // Gọi API nộp bài - POST nếu nộp mới, PUT nếu nộp lại
+      await studentAssignmentApi.submitAssignment(
+        {
+          classId: classId,
+          assignmentId: String(assignment.id),
+          file: selectedFile,
+          content: comment.trim() || undefined
+        },
+        isResubmit // true = PUT (update), false = POST (create)
+      )
 
       toaster.create({
         title: 'Nộp bài thành công!',

@@ -187,6 +187,11 @@ export const studentAssignmentApi = {
    * PUT /api/student/assignments/{assignment_id}/submit
    * Nộp bài tập (hoặc cập nhật bài nộp)
    *
+   * Quy trình upload file qua S3 Presigned URL (do Lambda giới hạn 6MB):
+   * 1. Gọi GET /api/upload/presigned-url để lấy uploadUrl và fileKey
+   * 2. Upload file trực tiếp lên S3 bằng PUT uploadUrl
+   * 3. Gọi API submit với fileKey thay vì file
+   *
    * API này yêu cầu header đặc biệt:
    * - Authorization: Bearer <idToken>
    * - user-idToken: <idToken>
@@ -198,8 +203,8 @@ export const studentAssignmentApi = {
    * - classId: ID của lớp học
    * - content: Ghi chú (optional)
    *
-   * Body (multipart/form-data):
-   * - file: File nộp bài
+   * Body (JSON):
+   * - fileKey: Đường dẫn file trên S3 (từ presigned URL response)
    */
   submitAssignment: async (request: {
     classId: string
@@ -225,45 +230,55 @@ export const studentAssignmentApi = {
     }
     normalizedAssignmentId = normalizedAssignmentId.replace('ASSIGNMENT#', 'ASS_')
 
-    // Build query params
-    const queryParams = new URLSearchParams()
-    queryParams.append('classId', normalizedClassId)
-    if (request.content) {
-      queryParams.append('content', request.content)
+    // === BƯỚC 1: Xin link upload (Get Presigned URL) ===
+    // Dùng axios để tự động có headers Authorization + user-idToken
+    console.log('=== SUBMIT ASSIGNMENT STEP 1: Get Presigned URL ===')
+    console.log('fileName:', request.file.name)
+
+    const { data: presignedData } = await api.get('/api/upload/presigned-url', {
+      params: { fileName: request.file.name }
+    })
+    console.log('Presigned URL response:', presignedData)
+
+    const { uploadUrl, fileKey } = presignedData
+    if (!uploadUrl || !fileKey) {
+      throw new Error('Không nhận được link upload từ server')
     }
 
-    // Body chỉ có file
-    const formData = new FormData()
-    formData.append('file', request.file)
+    // === BƯỚC 2: Upload file lên S3 (Direct Upload) ===
+    console.log('=== SUBMIT ASSIGNMENT STEP 2: Upload to S3 ===')
+    console.log('uploadUrl:', uploadUrl)
+    console.log('fileKey:', fileKey)
 
-    console.log('=== SUBMIT ASSIGNMENT DEBUG ===')
-    console.log('URL path assignment_id:', normalizedAssignmentId)
-    console.log('Query classId:', normalizedClassId)
-    console.log('Query content:', request.content)
-    console.log('file:', request.file.name)
-
-    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
-    const url = `${baseUrl}/api/student/assignments/${normalizedAssignmentId}/submit?${queryParams.toString()}`
-
-    console.log('Full URL:', url)
-
-    const response = await fetch(url, {
+    const uploadResponse = await fetch(uploadUrl, {
       method: 'PUT',
       headers: {
-        Authorization: `Bearer ${idToken}`,
-        'user-idToken': idToken
-        // Không set Content-Type, browser sẽ tự set với boundary cho multipart/form-data
+        'Content-Type': 'application/octet-stream'
+        // KHÔNG gửi Authorization header - S3 không hiểu Token của App
       },
-      body: formData
+      body: request.file
     })
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      console.error('Submit error:', errorData)
-      throw new Error(errorData.message || 'Lỗi khi nộp bài tập')
+    if (!uploadResponse.ok) {
+      throw new Error('Lỗi khi upload file lên S3')
     }
+    console.log('Upload to S3 SUCCESS')
 
-    const data = await response.json()
+    // === BƯỚC 3: Gọi API submit với fileKey (dùng axios) ===
+    console.log('=== SUBMIT ASSIGNMENT STEP 3: Submit to Backend ===')
+    console.log('fileKey:', fileKey)
+
+    const { data } = await api.put(
+      `/api/student/assignments/${normalizedAssignmentId}/submit`,
+      { fileKey },
+      {
+        params: {
+          classId: normalizedClassId,
+          content: request.content || undefined
+        }
+      }
+    )
+
     return data.data || data
   },
 
@@ -453,26 +468,50 @@ export const studentPostApi = {
   /**
    * POST /api/student/classes/{class_id}/posts
    * Tạo post mới trong lớp học (nếu student được phép)
+   *
+   * Sử dụng S3 Presigned URL flow cho file attachments:
+   * 1. Upload files lên S3 trước
+   * 2. Gửi fileKeys trong JSON body
    */
   createPost: async (
     classId: string,
     request: { title?: string; content: string; attachments?: File[] }
   ): Promise<StudentPostDTO> => {
-    const formData = new FormData()
-    if (request.title) {
-      formData.append('title', request.title)
-    }
-    formData.append('content', request.content)
-    if (request.attachments) {
-      request.attachments.forEach((file) => {
-        formData.append('attachments', file)
-      })
+    // Upload files to S3 first if any (dùng axios để có headers tự động)
+    let fileKeys: string[] = []
+    if (request.attachments && request.attachments.length > 0) {
+      for (const file of request.attachments) {
+        // Step 1: Get presigned URL (dùng axios)
+        const { data: presignedData } = await api.get('/api/upload/presigned-url', {
+          params: { fileName: file.name }
+        })
+
+        const { uploadUrl, fileKey } = presignedData
+
+        // Step 2: Upload to S3 (không dùng Authorization header)
+        const uploadResponse = await fetch(uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: file
+        })
+
+        if (!uploadResponse.ok) {
+          throw new Error('Lỗi khi upload file lên S3')
+        }
+
+        fileKeys.push(fileKey)
+      }
     }
 
-    const { data } = await api.post(`/api/student/classes/${classId}/posts`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+    // Step 3: Call API with fileKeys (dùng axios)
+    const { data } = await api.post(`/api/student/classes/${classId}/posts`, {
+      title: request.title || '',
+      content: request.content,
+      classId: classId,
+      fileKeys: fileKeys.length > 0 ? fileKeys : undefined
     })
-    return (data as any).data || data
+
+    return data.data || data
   },
 
   /**
@@ -480,52 +519,43 @@ export const studentPostApi = {
    * Tạo comment cho một post
    *
    * API này yêu cầu header đặc biệt:
-   * - Authorization: Bearer <idToken>
-   * - user-idToken: <idToken>
-   *
-   * Body (multipart/form-data):
-   * - content: Nội dung comment
-   * - parentId: ID comment cha (optional, để reply)
-   * - attachment: File đính kèm (optional)
-   * - postId: ID của post
+   * Sử dụng axios để có headers tự động (Authorization + user-idToken)
+   * Sử dụng S3 Presigned URL flow cho file attachment
    */
   createComment: async (
     postId: string,
     request: { content: string; parentId?: string; attachment?: File }
   ): Promise<PostCommentDTO> => {
-    const session = await fetchAuthSession()
-    const idToken = session.tokens?.idToken?.toString()
-
-    if (!idToken) {
-      throw new Error('Không tìm thấy token xác thực')
-    }
-
-    const formData = new FormData()
-    formData.append('content', request.content)
-    formData.append('postId', postId)
-    if (request.parentId) {
-      formData.append('parentId', request.parentId)
-    }
+    // Upload file to S3 first if any (dùng axios)
+    let fileKey: string | undefined
     if (request.attachment) {
-      formData.append('attachment', request.attachment)
+      // Step 1: Get presigned URL (dùng axios)
+      const { data: presignedData } = await api.get('/api/upload/presigned-url', {
+        params: { fileName: request.attachment.name }
+      })
+
+      // Step 2: Upload to S3 (không dùng Authorization header)
+      const uploadResponse = await fetch(presignedData.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: request.attachment
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error('Lỗi khi upload file lên S3')
+      }
+
+      fileKey = presignedData.fileKey
     }
 
-    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
-    const response = await fetch(`${baseUrl}/api/student/posts/${postId}/comments`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${idToken}`,
-        'user-idToken': idToken
-      },
-      body: formData
+    // Step 3: Call API with fileKey (dùng axios)
+    const { data } = await api.post(`/api/student/posts/${postId}/comments`, {
+      content: request.content,
+      postId: postId,
+      parentId: request.parentId,
+      fileKey: fileKey
     })
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.message || 'Lỗi khi tạo bình luận')
-    }
-
-    const data = await response.json()
     return data.data || data
   },
 

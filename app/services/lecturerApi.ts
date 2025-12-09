@@ -594,46 +594,44 @@ export const lecturerPostApi = {
   /**
    * POST /api/lecturer/classes/{class_id}/posts
    * Tạo post gốc (chỉ dành cho GV)
-   * Body (multipart/form-data): title, content, attachment, classId, pinned
    *
-   * NOTE: API này yêu cầu header user-idToken
+   * Sử dụng S3 Presigned URL flow cho file attachment:
+   * 1. Upload file lên S3 trước
+   * Dùng axios để có headers tự động (Authorization + user-idToken)
    */
   createPost: async (classId: string, data: CreatePostRequest) => {
-    // Lấy idToken từ Cognito session
-    const session = await fetchAuthSession()
-    const idToken = session.tokens?.idToken?.toString()
-
-    if (!idToken) {
-      throw new Error('Không tìm thấy token xác thực')
-    }
-
-    const formData = new FormData()
-    formData.append('title', data.title)
-    formData.append('content', data.content)
-    formData.append('classId', classId)
-    formData.append('pinned', (data.is_pinned ?? false).toString())
-
+    // Upload file to S3 first if any (dùng axios)
+    let fileKey: string | undefined
     if (data.attachment) {
-      formData.append('attachment', data.attachment)
+      // Step 1: Get presigned URL (dùng axios)
+      const { data: presignedData } = await api.get('/api/upload/presigned-url', {
+        params: { fileName: data.attachment.name }
+      })
+
+      // Step 2: Upload to S3 (không dùng Authorization header)
+      const uploadResponse = await fetch(presignedData.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: data.attachment
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error('Lỗi khi upload file lên S3')
+      }
+
+      fileKey = presignedData.fileKey
     }
 
-    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
-    const response = await fetch(`${baseUrl}/api/lecturer/classes/${classId}/posts`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${idToken}`,
-        'user-idToken': idToken
-        // Không set Content-Type cho FormData, browser sẽ tự set với boundary
-      },
-      body: formData
+    // Step 3: Call API with fileKey (dùng axios)
+    const response = await api.post(`/api/lecturer/classes/${classId}/posts`, {
+      title: data.title,
+      content: data.content,
+      classId: classId,
+      pinned: data.is_pinned ?? false,
+      fileKey: fileKey
     })
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.message || 'Lỗi khi tạo bài đăng')
-    }
-
-    return response.json()
+    return response.data
   },
 
   /**
@@ -734,17 +732,40 @@ export const profileApi = {
     return response.data.data
   },
 
-  // Update profile - PATCH với multipart/form-data
+  /**
+   * PATCH /api/users/profile
+   * Update profile - dùng axios để có headers tự động
+   */
   updateProfile: async (data: UpdateProfileRequest & { avatarFile?: File }) => {
-    const formData = new FormData()
-    if (data.name) formData.append('name', data.name)
-    if (data.dateOfBirth) formData.append('dateOfBirth', data.dateOfBirth)
-    if (data.avatarFile) formData.append('avatarFile', data.avatarFile)
+    // Upload avatar to S3 first if any (dùng axios)
+    let avatarKey: string | undefined
+    if (data.avatarFile) {
+      // Step 1: Get presigned URL (dùng axios)
+      const { data: presignedData } = await api.get('/api/upload/presigned-url', {
+        params: { fileName: data.avatarFile.name }
+      })
 
-    const response = await api.patch('/api/users/profile', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      // Step 2: Upload to S3 (không dùng Authorization header)
+      const uploadResponse = await fetch(presignedData.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream' },
+        body: data.avatarFile
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error('Lỗi khi upload avatar lên S3')
+      }
+
+      avatarKey = presignedData.fileKey
+    }
+
+    // Step 3: Call API with avatarKey (dùng axios)
+    const response = await api.patch('/api/users/profile', {
+      name: data.name,
+      dateOfBirth: data.dateOfBirth,
+      avatarKey: avatarKey
     })
-    // Handle different response formats
+
     return response.data?.data || response.data
   },
 

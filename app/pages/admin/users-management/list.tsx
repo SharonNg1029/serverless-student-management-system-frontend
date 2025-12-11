@@ -39,6 +39,7 @@ const UsersList: React.FC = () => {
   // States for filters
   const [keyword, setKeyword] = useState<string>('')
   const [roleId, setRoleId] = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState<string>('') // '' = all, '1' = active, '0' = banned
 
   // Debounced keyword for API calls
   const [debouncedKeyword, setDebouncedKeyword] = useState<string>('')
@@ -133,6 +134,12 @@ const UsersList: React.FC = () => {
         )
       }
 
+      // Filter trên client theo status
+      if (statusFilter !== '') {
+        const filterStatus = parseInt(statusFilter)
+        allUsers = allUsers.filter((u) => u.status === filterStatus)
+      }
+
       console.log('=== FINAL USERS TO DISPLAY ===', allUsers)
       setUsers(allUsers)
     } catch (error: any) {
@@ -152,16 +159,17 @@ const UsersList: React.FC = () => {
   // Load data on mount and when filters change
   useEffect(() => {
     fetchUsers()
-  }, [debouncedKeyword, roleId])
+  }, [debouncedKeyword, roleId, statusFilter])
 
   // Handle clear filters
   const handleClearFilters = () => {
     setKeyword('')
     setRoleId('')
+    setStatusFilter('')
   }
 
   // Check if any filter is active
-  const hasActiveFilters = keyword || roleId !== ''
+  const hasActiveFilters = keyword || roleId !== '' || statusFilter !== ''
 
   const columns: Column<UserDisplay>[] = [
     {
@@ -316,6 +324,40 @@ const UsersList: React.FC = () => {
                   { label: 'Quản trị viên', value: '1' },
                   { label: 'Giảng viên', value: '2' },
                   { label: 'Sinh viên', value: '3' }
+                ].map((item) => (
+                  <SelectItem key={item.value} item={item}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </SelectRoot>
+          </div>
+
+          {/* Status Filter */}
+          <div className='w-40'>
+            <label className='block text-sm font-medium text-slate-700 mb-1'>Trạng thái</label>
+            <SelectRoot
+              collection={createListCollection({
+                items: [
+                  { label: 'Tất cả', value: '' },
+                  { label: 'Hoạt động', value: '1' },
+                  { label: 'Đã khóa', value: '0' }
+                ]
+              })}
+              value={statusFilter ? [statusFilter] : []}
+              onValueChange={(e: any) => setStatusFilter(e.value[0] || '')}
+              size='sm'
+              variant='outline'
+              positioning={{ sameWidth: true }}
+            >
+              <SelectTrigger clearable>
+                <SelectValueText placeholder='Tất cả' />
+              </SelectTrigger>
+              <SelectContent>
+                {[
+                  { label: 'Tất cả', value: '' },
+                  { label: 'Hoạt động', value: '1' },
+                  { label: 'Đã khóa', value: '0' }
                 ].map((item) => (
                   <SelectItem key={item.value} item={item}>
                     {item.label}

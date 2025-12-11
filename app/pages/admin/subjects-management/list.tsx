@@ -124,8 +124,19 @@ const SubjectsList: React.FC = () => {
   }
 
   // Handle delete subject - PATCH /api/admin/subjects/{codeSubject}/delete
+  // Chỉ cho phép đóng môn học khi status = 1 (đang giảng dạy)
   const handleDeleteSubject = async (subject: Subject) => {
-    const confirmMessage = `Bạn có chắc muốn xóa môn học "${subject.codeSubject} - ${subject.name}"?`
+    // Kiểm tra nếu môn học đã đóng rồi thì không cho đóng nữa
+    if (subject.status === 0) {
+      toaster.create({
+        title: 'Thông báo',
+        description: 'Môn học này đã ngừng giảng dạy trước đó.',
+        type: 'info'
+      })
+      return
+    }
+
+    const confirmMessage = `Bạn có chắc muốn ngừng giảng dạy môn học "${subject.codeSubject} - ${subject.name}"?`
 
     if (!window.confirm(confirmMessage)) {
       return
@@ -137,7 +148,7 @@ const SubjectsList: React.FC = () => {
 
       toaster.create({
         title: 'Thành công',
-        description: `Đã xóa môn học "${subject.codeSubject}" thành công!`,
+        description: `Đã đóng môn học "${subject.codeSubject}" thành công!`,
         type: 'success'
       })
 
@@ -147,10 +158,16 @@ const SubjectsList: React.FC = () => {
       console.error('Error deleting subject:', error)
       toaster.create({
         title: 'Lỗi',
-        description: error.response?.data?.message || 'Không thể xóa môn học. Vui lòng thử lại!',
+        description: error.response?.data?.message || 'Không thể đóng môn học. Vui lòng thử lại!',
         type: 'error'
       })
     }
+  }
+
+  // Kiểm tra có hiện nút "Ngừng giảng dạy" không
+  // Chỉ hiện khi status = 1 (đang giảng dạy)
+  const shouldShowDeleteButton = (subject: Subject) => {
+    return subject.status === 1
   }
 
   // Define table columns
@@ -293,6 +310,7 @@ const SubjectsList: React.FC = () => {
           onEdit={handleEditSubject}
           onDelete={handleDeleteSubject}
           deleteLabel='Ngừng giảng dạy'
+          shouldShowDelete={shouldShowDeleteButton}
         />
       )}
     </div>

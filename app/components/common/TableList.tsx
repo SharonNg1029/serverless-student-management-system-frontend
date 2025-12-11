@@ -19,6 +19,7 @@ interface TableListProps<T> {
   onEdit?: (item: T) => void
   onDelete?: (item: T) => void
   deleteLabel?: string | ((item: T) => string) // Hỗ trợ cả string và function
+  shouldShowDelete?: (item: T) => boolean // Hàm kiểm tra có hiện nút delete không
   isLoading?: boolean
 }
 
@@ -33,6 +34,7 @@ function TableList<T extends { id: string | number }>({
   onEdit,
   onDelete,
   deleteLabel = 'Xóa',
+  shouldShowDelete,
   isLoading
 }: TableListProps<T>) {
   const [openMenuId, setOpenMenuId] = useState<string | number | null>(null)
@@ -174,8 +176,10 @@ function TableList<T extends { id: string | number }>({
                                 <span className='font-medium'>Cập nhật</span>
                               </button>
                             )}
-                            {onEdit && onDelete && <div className='my-1 border-t border-slate-100' />}
-                            {onDelete && (
+                            {onEdit && onDelete && (!shouldShowDelete || shouldShowDelete(row)) && (
+                              <div className='my-1 border-t border-slate-100' />
+                            )}
+                            {onDelete && (!shouldShowDelete || shouldShowDelete(row)) && (
                               <button
                                 onClick={() => handleDelete(row)}
                                 className='w-full px-4 py-2.5 text-left text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors'

@@ -408,6 +408,7 @@ const ClassesList: React.FC = () => {
           onEdit={handleEditClass}
           onDelete={handleDeactivateClass}
           deleteLabel='Đóng lớp'
+          shouldShowDelete={(classItem) => classItem.status === 1}
         />
       )}
     </div>

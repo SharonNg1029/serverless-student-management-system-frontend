@@ -7,6 +7,7 @@ import api from '../../../utils/axios'
 import { toaster } from '../../../components/ui/toaster'
 import { createListCollection } from '@chakra-ui/react'
 import { SelectRoot, SelectTrigger, SelectValueText, SelectContent, SelectItem } from '../../../components/ui/select'
+import { Pagination, usePagination } from '../../../components/ui/pagination'
 
 const SubjectsList: React.FC = () => {
   const navigate = useNavigate()
@@ -25,6 +26,10 @@ const SubjectsList: React.FC = () => {
     const searchTerm = keyword.trim().toLowerCase()
     return subject.codeSubject.toLowerCase().includes(searchTerm) || subject.name.toLowerCase().includes(searchTerm)
   })
+
+  // Pagination
+  const { currentPage, setCurrentPage, pageSize, setPageSize, totalItems, totalPages, paginatedData } =
+    usePagination(filteredSubjects)
 
   // ============================================
   // API Response Type từ BE
@@ -284,16 +289,28 @@ const SubjectsList: React.FC = () => {
           <p className='text-slate-600'>Đang tải danh sách môn học...</p>
         </div>
       ) : (
-        <TableList
-          title='Quản lý Môn học'
-          subtitle='Danh sách các môn học.'
-          data={filteredSubjects}
-          columns={columns}
-          onAdd={() => navigate('/admin/subjects-management/create')}
-          onEdit={handleEditSubject}
-          onDelete={handleDeleteSubject}
-          deleteLabel='Ngừng giảng dạy'
-        />
+        <>
+          <TableList
+            title='Quản lý Môn học'
+            subtitle='Danh sách các môn học.'
+            data={paginatedData}
+            columns={columns}
+            onAdd={() => navigate('/admin/subjects-management/create')}
+            onEdit={handleEditSubject}
+            onDelete={handleDeleteSubject}
+            deleteLabel='Ngừng giảng dạy'
+          />
+          <div className='bg-white rounded-lg shadow-sm border border-slate-200 mt-[-1rem]'>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
+          </div>
+        </>
       )}
     </div>
   )

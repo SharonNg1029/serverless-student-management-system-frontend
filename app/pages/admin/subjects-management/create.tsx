@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Save, ArrowLeft, Library } from 'lucide-react'
+import { createListCollection } from '@chakra-ui/react'
 import type { Subject, SubjectDTO } from '../../../types'
 import api from '../../../utils/axios'
 import { toaster } from '../../../components/ui/toaster'
+import { SelectRoot, SelectTrigger, SelectContent, SelectItem, SelectValueText } from '../../../components/ui/select'
 
 const CreateSubject = () => {
   const navigate = useNavigate()
@@ -180,19 +182,31 @@ const CreateSubject = () => {
           {/* Khoa - không bắt buộc vì chưa làm DB chuyên ngành */}
           <div>
             <label className='block text-sm font-semibold text-slate-700 mb-2'>Khoa</label>
-            <select
-              name='department'
-              value={formData.department}
-              onChange={handleChange}
-              className='w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#dd7323] focus:border-[#dd7323] outline-none transition-all bg-white'
+            <SelectRoot
+              collection={createListCollection({
+                items: departments.map((dept) => ({
+                  value: dept.value,
+                  label: dept.label
+                }))
+              })}
+              value={formData.department ? [formData.department] : []}
+              onValueChange={(e) => setFormData((prev) => ({ ...prev, department: e.value[0] || '' }))}
+              size='sm'
             >
-              <option value=''>Chọn khoa (không bắt buộc)</option>
-              {departments.map((dept) => (
-                <option key={dept.value} value={dept.value}>
-                  {dept.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger
+                className='w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#dd7323] focus:border-[#dd7323] outline-none transition-all bg-white h-11 flex items-center'
+                clearable={!!formData.department}
+              >
+                <SelectValueText placeholder='Chọn khoa (không bắt buộc)' className='flex items-center' />
+              </SelectTrigger>
+              <SelectContent>
+                {departments.map((dept) => (
+                  <SelectItem key={dept.value} item={{ value: dept.value, label: dept.label }}>
+                    {dept.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </SelectRoot>
           </div>
 
           {/* Mô tả */}
@@ -211,15 +225,25 @@ const CreateSubject = () => {
           {/* Trạng thái */}
           <div>
             <label className='block text-sm font-semibold text-slate-700 mb-2'>Trạng thái</label>
-            <select
-              name='status'
-              value={formData.status}
-              onChange={handleChange}
-              className='w-full px-4 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#dd7323] focus:border-[#dd7323] outline-none transition-all bg-white'
+            <SelectRoot
+              collection={createListCollection({
+                items: [
+                  { value: '1', label: 'Đang hoạt động' },
+                  { value: '0', label: 'Ngừng hoạt động' }
+                ]
+              })}
+              value={[String(formData.status)]}
+              onValueChange={(e) => setFormData((prev) => ({ ...prev, status: Number(e.value[0] || '1') }))}
+              size='sm'
             >
-              <option value={1}>Đang hoạt động</option>
-              <option value={0}>Ngừng hoạt động</option>
-            </select>
+              <SelectTrigger className='w-full px-3 py-2 rounded-lg border border-slate-300 focus:ring-2 focus:ring-[#dd7323] focus:border-[#dd7323] outline-none transition-all bg-white h-11 flex items-center'>
+                <SelectValueText placeholder='Chọn trạng thái' className='flex items-center' />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem item={{ value: '1', label: 'Đang hoạt động' }}>Đang hoạt động</SelectItem>
+                <SelectItem item={{ value: '0', label: 'Ngừng hoạt động' }}>Ngừng hoạt động</SelectItem>
+              </SelectContent>
+            </SelectRoot>
           </div>
 
           {/* Buttons */}

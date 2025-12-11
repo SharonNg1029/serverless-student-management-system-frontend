@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Save, ArrowLeft, UserPlus, Calendar, Eye, EyeOff, ChevronDown } from 'lucide-react'
+import { Save, ArrowLeft, UserPlus, Calendar, Eye, EyeOff } from 'lucide-react'
 import { Calendar as DateCalendar } from 'react-date-range'
 import { format } from 'date-fns'
 import 'react-date-range/dist/styles.css'
@@ -8,7 +8,8 @@ import 'react-date-range/dist/theme/default.css'
 import type { UserEntity, RegisterResponse } from '../../../types'
 import api from '../../../utils/axios'
 import { toaster } from '../../../components/ui/toaster'
-import { Portal, Box } from '@chakra-ui/react'
+import { Portal, Box, createListCollection } from '@chakra-ui/react'
+import { SelectRoot, SelectTrigger, SelectContent, SelectItem, SelectValueText } from '../../../components/ui/select'
 
 // Danh sách chuyên ngành (majors)
 const MAJORS = [
@@ -244,25 +245,31 @@ const UserCreate: React.FC = () => {
             {formData.role_id === 3 && (
               <div>
                 <label className='block text-sm font-bold text-slate-700 mb-2'>Chuyên ngành</label>
-                <div className='relative'>
-                  <select
-                    required
-                    className='w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all appearance-none bg-white'
-                    value={selectedMajor}
-                    onChange={(e) => setSelectedMajor(e.target.value)}
+                <SelectRoot
+                  collection={createListCollection({
+                    items: MAJORS.map((major) => ({
+                      value: major.code,
+                      label: `${major.code} - ${major.name}`
+                    }))
+                  })}
+                  value={selectedMajor ? [selectedMajor] : []}
+                  onValueChange={(e) => setSelectedMajor(e.value[0] || '')}
+                  size='sm'
+                >
+                  <SelectTrigger
+                    className='w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all bg-white h-11 flex items-center'
+                    clearable={!!selectedMajor}
                   >
-                    <option value=''>Chọn chuyên ngành</option>
+                    <SelectValueText placeholder='Chọn chuyên ngành' className='flex items-center' />
+                  </SelectTrigger>
+                  <SelectContent>
                     {MAJORS.map((major) => (
-                      <option key={major.code} value={major.code}>
+                      <SelectItem key={major.code} item={{ value: major.code, label: `${major.code} - ${major.name}` }}>
                         {major.code} - {major.name}
-                      </option>
+                      </SelectItem>
                     ))}
-                  </select>
-                  <ChevronDown
-                    className='absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none'
-                    size={18}
-                  />
-                </div>
+                  </SelectContent>
+                </SelectRoot>
               </div>
             )}
 

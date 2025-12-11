@@ -77,7 +77,7 @@ export default function LoginRoute() {
   const getRedirectPathByRole = (role: string): string => {
     switch (role) {
       case 'Admin':
-        return '/admin/settings' // Admin luôn vào Settings thay vì Dashboard
+        return '/admin/analytics' // Admin vào trang Thống kê & Báo cáo
       case 'Lecturer':
         return '/lecturer/dashboard'
       case 'Student':

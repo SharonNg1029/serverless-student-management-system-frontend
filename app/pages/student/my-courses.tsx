@@ -43,12 +43,18 @@ export default function MyCoursesRoute() {
       console.log('Parsed results:', results)
 
       // Map API response to EnrolledClass format
+      // API trả về: id, name (tên lớp), subjectId, subjectName (tên môn), teacherId, lecturerName, studentCount, academicYear, semester, status
       const mappedCourses: EnrolledClass[] = results.map((c: any) => ({
         classId: c.classId || c.class_id || c.id || '',
+        className: c.name || c.className || c.class_name || '', // Tên lớp (e.g., "CS101-VY")
         subjectId: c.subjectId || c.subject_id || '',
-        subjectName: c.subjectName || c.subject_name || c.name || '',
+        subjectName: c.subjectName || c.subject_name || '', // Tên môn học
+        lecturerId: c.teacherId || c.lecturerId || c.lecturer_id || '', // Mã GV
         lecturerName: c.lecturerName || c.lecturer_name || c.teacherName || c.teacher_name || '',
         totalStudents: c.studentCount || c.student_count || c.totalStudents || 0,
+        academicYear: c.academicYear || c.academic_year || '', // Năm học
+        semester: c.semester || '', // Học kỳ
+        status: c.status ?? 1, // Trạng thái (1 = đang học, 0 = đã kết thúc)
         enrolledAt: c.enrolledAt || c.enrolled_at || c.createdAt || c.created_at || ''
       }))
 
@@ -194,7 +200,7 @@ export default function MyCoursesRoute() {
                   transform: 'translateY(-2px)',
                   transition: 'all 0.2s'
                 }}
-                onClick={() => (window.location.href = '/student/all-courses')}
+                onClick={() => (window.location.href = '/student/search?keyword=&type=classes')}
               >
                 <BookOpen size={20} />
                 Khám phá và đăng ký lớp học

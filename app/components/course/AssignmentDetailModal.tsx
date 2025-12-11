@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Box, Text, VStack, HStack, Button, Badge, Dialog, Portal, CloseButton, Spinner, Link } from '@chakra-ui/react'
+import { Box, Text, VStack, HStack, Button, Badge, Dialog, Portal, CloseButton, Spinner } from '@chakra-ui/react'
 import { Calendar, FileText, Upload, Download, CheckCircle, Clock, AlertCircle } from 'lucide-react'
-import { studentAssignmentApi } from '../../services/studentApi'
+import { studentAssignmentApi, openFileDownload } from '../../services/studentApi'
+import { toaster } from '../ui/toaster'
 
 interface Assignment {
   id: number | string
@@ -170,19 +171,43 @@ export default function AssignmentDetailModal({
                     </Text>
                   </HStack>
 
-                  {/* Description */}
-                  {assignment.description && (
-                    <Box>
-                      <Text fontSize='sm' fontWeight='semibold' color='gray.700' mb={2}>
-                        Mô tả
-                      </Text>
-                      <Box p={3} bg='gray.50' borderRadius='lg'>
-                        <Text fontSize='sm' color='gray.600' whiteSpace='pre-wrap'>
-                          {assignment.description}
+                  {/* File đính kèm - nếu description là fileKey (chứa "assignments/" hoặc có extension file) */}
+                  {assignment.description &&
+                    assignment.description.trim() !== '' &&
+                    (assignment.description.includes('assignments/') ||
+                      /\.(pdf|doc|docx|zip|rar|png|jpg|jpeg|gif|ppt|pptx|xls|xlsx|txt)$/i.test(
+                        assignment.description
+                      )) && (
+                      <Box>
+                        <Text fontSize='sm' fontWeight='semibold' color='gray.700' mb={2}>
+                          File đính kèm từ giảng viên
                         </Text>
+                        <HStack
+                          p={3}
+                          bg='orange.50'
+                          borderRadius='lg'
+                          cursor='pointer'
+                          _hover={{ bg: 'orange.100' }}
+                          transition='all 0.2s'
+                          onClick={async () => {
+                            try {
+                              await openFileDownload(assignment.description!)
+                            } catch (err: any) {
+                              toaster.create({
+                                title: 'Lỗi',
+                                description: err.message || 'Không thể tải file',
+                                type: 'error'
+                              })
+                            }
+                          }}
+                        >
+                          <Download size={16} color='#dd7323' />
+                          <Text fontSize='sm' color='#dd7323' fontWeight='medium'>
+                            Tải file đính kèm
+                          </Text>
+                        </HStack>
                       </Box>
-                    </Box>
-                  )}
+                    )}
 
                   {/* Max Score */}
                   <HStack>
@@ -217,23 +242,55 @@ export default function AssignmentDetailModal({
                       {hasSubmission && (
                         <>
                           {/* File đã nộp - handle both snake_case and camelCase */}
-                          {(submission?.file_name || submission?.fileName) && (
-                            <HStack justify='space-between' p={2} bg='white' borderRadius='lg'>
-                              <HStack gap={2}>
-                                <FileText size={16} color='#38a169' />
-                                <Text fontSize='sm' color='gray.700'>
-                                  {submission.file_name || submission.fileName}
-                                </Text>
+                          {(submission?.file_url || submission?.fileUrl) && (
+                            <Box p={3} bg='white' borderRadius='xl' border='1px solid' borderColor='green.200'>
+                              <Text fontSize='xs' color='gray.500' mb={2} fontWeight='medium'>
+                                Bài nộp của bạn
+                              </Text>
+                              <HStack
+                                justify='space-between'
+                                p={3}
+                                bg='green.50'
+                                borderRadius='lg'
+                                cursor='pointer'
+                                _hover={{ bg: 'green.100' }}
+                                transition='all 0.2s'
+                                onClick={async () => {
+                                  const fileKey = submission.file_url || submission.fileUrl
+                                  if (fileKey) {
+                                    try {
+                                      await openFileDownload(fileKey)
+                                    } catch (err: any) {
+                                      toaster.create({
+                                        title: 'Lỗi',
+                                        description: err.message || 'Không thể tải file',
+                                        type: 'error'
+                                      })
+                                    }
+                                  }
+                                }}
+                              >
+                                <HStack gap={3}>
+                                  <Box p={2} bg='green.100' borderRadius='md'>
+                                    <FileText size={18} color='#38a169' />
+                                  </Box>
+                                  <VStack align='flex-start' gap={0}>
+                                    <Text fontSize='sm' fontWeight='medium' color='gray.800' lineClamp={1}>
+                                      {submission.file_name ||
+                                        submission.fileName ||
+                                        (submission.file_url || submission.fileUrl || '').split('/').pop() ||
+                                        'File đã nộp'}
+                                    </Text>
+                                    <Text fontSize='xs' color='gray.500'>
+                                      Bấm để tải xuống
+                                    </Text>
+                                  </VStack>
+                                </HStack>
+                                <Box p={2} bg='green.500' borderRadius='full'>
+                                  <Download size={16} color='white' />
+                                </Box>
                               </HStack>
-                              {(submission?.file_url || submission?.fileUrl) && (
-                                <Link href={submission.file_url || submission.fileUrl} target='_blank'>
-                                  <Button size='xs' variant='ghost' colorPalette='green'>
-                                    <Download size={14} />
-                                    <Text ml={1}>Tải</Text>
-                                  </Button>
-                                </Link>
-                              )}
-                            </HStack>
+                            </Box>
                           )}
 
                           {/* Thời gian nộp - handle both formats */}
@@ -241,15 +298,18 @@ export default function AssignmentDetailModal({
                             submission?.submittedAt ||
                             submission?.created_at ||
                             submission?.createdAt) && (
-                            <Text fontSize='xs' color='gray.500'>
-                              Nộp lúc:{' '}
-                              {new Date(
-                                submission.submitted_at ||
-                                  submission.submittedAt ||
-                                  submission.created_at ||
-                                  submission.createdAt!
-                              ).toLocaleString('vi-VN')}
-                            </Text>
+                            <HStack gap={2}>
+                              <Clock size={14} color='#718096' />
+                              <Text fontSize='xs' color='gray.500'>
+                                Nộp lúc:{' '}
+                                {new Date(
+                                  submission.submitted_at ||
+                                    submission.submittedAt ||
+                                    submission.created_at ||
+                                    submission.createdAt!
+                                ).toLocaleString('vi-VN')}
+                              </Text>
+                            </HStack>
                           )}
 
                           {/* Điểm */}

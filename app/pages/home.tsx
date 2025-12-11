@@ -29,7 +29,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  ChevronRight as ArrowRight
+  ChevronRight as ArrowRight,
+  ClipboardCheck,
+  ExternalLink
 } from 'lucide-react'
 import { useAuthStore } from '../store/authStore'
 import { useNotificationUIStore } from '../store/notificationUIStore'
@@ -48,14 +50,25 @@ interface DashboardStats extends StudentDashboardStats {
 }
 
 // API Response Types (specific to this page's API calls)
+interface ClassFromAPI {
+  id: string
+  name: string
+  classId?: string
+  class_id?: string
+}
+
+// Response từ /api/notifications: { id, title, content, type, isRead, createdAt, classId, ... }
 interface NotificationFromAPI {
-  id: number
+  id: string | number
   title: string
   content: string
   type: string // 'system' | 'class'
-  class_id?: number
-  sent_at: string
-  is_read?: boolean
+  classId?: string // camelCase từ BE
+  class_id?: string | number // snake_case fallback
+  createdAt?: string // camelCase từ BE
+  sent_at?: string // snake_case fallback
+  isRead?: boolean // camelCase từ BE
+  is_read?: boolean // snake_case fallback
 }
 
 // ============================================
@@ -113,38 +126,65 @@ export default function HomeRoute() {
     }
   })
 
-  // Fetch notifications from API
+  // Fetch notifications from API - dùng /api/notifications (giống Lecturer)
   const { data: notificationsRaw = [], isLoading: notificationsLoading } = useQuery<NotificationFromAPI[]>({
     queryKey: ['student-notifications'],
     queryFn: async () => {
-      const response = await api.get<{ results: NotificationFromAPI[] }>('/api/student/notifications')
-      return response.data?.results || []
+      const response = await api.get('/api/notifications')
+      // BE trả về array trực tiếp hoặc { data: [...] }
+      const data = (response.data as any)?.data || response.data?.results || response.data || []
+      return Array.isArray(data) ? data : []
     }
   })
 
   // Transform API notifications to UI format
+  // Filter: show system notifications + class notifications chỉ khi student đã enrolled class đó
   const notifications: RecentNotification[] = useMemo(() => {
-    return notificationsRaw.map((n) => ({
-      id: String(n.id),
-      type: n.type === 'system' ? 'admin' : 'lecturer',
-      title: n.title,
-      content: n.content,
-      createdAt: n.sent_at,
-      isRead: n.is_read ?? false,
-      classId: n.class_id
-    }))
-  }, [notificationsRaw])
+    // Lấy danh sách classId đã enrolled
+    const enrolledClassIds = enrolledClasses.map((c: any) => c.id || c.classId || c.class_id)
+
+    return notificationsRaw
+      .filter((n) => {
+        const notificationType = (n.type || 'system').toLowerCase()
+
+        // System notifications → show luôn
+        if (notificationType === 'system') {
+          return true
+        }
+
+        // Class notifications → chỉ show nếu student đã enrolled class đó
+        if (notificationType === 'class') {
+          const notificationClassId = n.classId || n.class_id
+          return notificationClassId && enrolledClassIds.includes(String(notificationClassId))
+        }
+
+        // Các type khác → show luôn (fallback)
+        return true
+      })
+      .map((n) => ({
+        id: String(n.id),
+        type: (n.type || 'system').toLowerCase() === 'system' ? 'admin' : 'lecturer',
+        title: n.title,
+        content: n.content,
+        createdAt: n.createdAt || n.sent_at || new Date().toISOString(),
+        isRead: n.isRead ?? n.is_read ?? false,
+        classId: n.classId || n.class_id
+      }))
+  }, [notificationsRaw, enrolledClasses])
 
   // Calculate unread count
   const unreadNotificationsCount = useMemo(() => {
     return notifications.filter((n) => !n.isRead).length
   }, [notifications])
 
-  // Fetch calendar assignments
-  const { data: assignments = [], isLoading: calendarLoading } = useQuery({
-    queryKey: ['calendar-assignments', currentDate.getMonth(), currentDate.getFullYear()],
-    queryFn: () => fetchCalendarAssignments(currentDate.getMonth() + 1, currentDate.getFullYear())
-  })
+  // Calendar assignments - fix cứng empty array vì BE chưa có API
+  // TODO: Khi BE có API /student/assignments/calendar thì bỏ comment dòng dưới
+  const assignments: CalendarAssignment[] = []
+  const calendarLoading = false
+  // const { data: assignments = [], isLoading: calendarLoading } = useQuery({
+  //   queryKey: ['calendar-assignments', currentDate.getMonth(), currentDate.getFullYear()],
+  //   queryFn: () => fetchCalendarAssignments(currentDate.getMonth() + 1, currentDate.getFullYear())
+  // })
 
   // Calculate upcoming deadlines (within 7 days)
   const upcomingDeadlinesCount = useMemo(() => {
@@ -264,6 +304,63 @@ export default function HomeRoute() {
               onClick={() => navigate('/student/ranking')}
             />
           </Grid>
+
+          {/* Exam System Card */}
+          <Box px={6} mt={6}>
+            <Card.Root
+              bg='linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+              borderRadius='2xl'
+              shadow='lg'
+              overflow='hidden'
+              position='relative'
+              _hover={{ transform: 'translateY(-2px)', shadow: 'xl' }}
+              transition='all 0.3s'
+              cursor='pointer'
+              onClick={() => window.open('https://c-examlab.vercel.app', '_blank')}
+            >
+              <Box
+                position='absolute'
+                top='-20px'
+                right='-20px'
+                w='120px'
+                h='120px'
+                bg='rgba(255,255,255,0.1)'
+                borderRadius='full'
+              />
+              <Box
+                position='absolute'
+                bottom='-30px'
+                left='-30px'
+                w='100px'
+                h='100px'
+                bg='rgba(255,255,255,0.05)'
+                borderRadius='full'
+              />
+              <Card.Body p={6}>
+                <HStack justify='space-between' align='center'>
+                  <HStack gap={4}>
+                    <Circle size='14' bg='rgba(255,255,255,0.2)'>
+                      <ClipboardCheck size={28} color='white' />
+                    </Circle>
+                    <VStack align='flex-start' gap={1}>
+                      <Heading size='lg' color='white' fontWeight='bold'>
+                        Hệ thống làm bài kiểm tra
+                      </Heading>
+                      <Text color='whiteAlpha.800' fontSize='sm'>
+                        Truy cập hệ thống thi trắc nghiệm trực tuyến - C-ExamLab
+                      </Text>
+                    </VStack>
+                  </HStack>
+                  <HStack gap={2} color='white'>
+                    <Text fontSize='sm' fontWeight='medium'>
+                      Truy cập ngay
+                    </Text>
+                    <ExternalLink size={20} />
+                  </HStack>
+                </HStack>
+              </Card.Body>
+            </Card.Root>
+          </Box>
         </Box>
 
         {/* ============================================

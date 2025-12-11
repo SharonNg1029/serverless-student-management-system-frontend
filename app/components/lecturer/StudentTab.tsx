@@ -29,9 +29,10 @@ interface Student {
 
 interface StudentTabProps {
   classId: string
+  teacherId?: string // ID của giảng viên để filter ra khỏi danh sách sinh viên
 }
 
-export default function LecturerStudentTab({ classId }: StudentTabProps) {
+export default function LecturerStudentTab({ classId, teacherId }: StudentTabProps) {
   const [students, setStudents] = useState<Student[]>([])
   const [loading, setLoading] = useState(true)
   const [sorting, setSorting] = useState<SortingState>([])
@@ -45,16 +46,26 @@ export default function LecturerStudentTab({ classId }: StudentTabProps) {
       // BE trả về { data: [...], count, message, status }
       const data = (response as any)?.data || response?.results || []
 
-      const studentsData: Student[] = data.map((s: any) => ({
-        id: s.studentId || s.id || '',
-        studentCode: s.studentCode || s.codeUser || '',
-        name: s.studentName || s.name || '',
-        email: s.email || '',
-        phone: s.phone || null,
-        joinedAt: s.joinedAt || s.enrolledAt || '',
-        status: s.status || 'enrolled',
-        totalScore: s.totalScore ?? null
-      }))
+      const studentsData: Student[] = data
+        .filter((s: any) => {
+          // Filter ra giảng viên khỏi danh sách sinh viên
+          const studentId = s.studentId || s.id || ''
+          if (teacherId && studentId === teacherId) {
+            console.log('Filtering out teacher from student list:', studentId)
+            return false
+          }
+          return true
+        })
+        .map((s: any) => ({
+          id: s.studentId || s.id || '',
+          studentCode: s.studentCode || s.codeUser || '',
+          name: s.studentName || s.name || '',
+          email: s.email || '',
+          phone: s.phone || null,
+          joinedAt: s.joinedAt || s.enrolledAt || '',
+          status: s.status || 'enrolled',
+          totalScore: s.totalScore ?? null
+        }))
       setStudents(studentsData)
     } catch (err) {
       console.error('Failed to fetch students:', err)
@@ -217,7 +228,7 @@ export default function LecturerStudentTab({ classId }: StudentTabProps) {
           <StatsCard label='Tổng sinh viên' value={stats.total} icon={Users} />
         </Box>
         <Box minW='180px'>
-          <StatsCard label='Đang hoạt động' value={stats.active} icon={UserCheck} />
+          <StatsCard label='Tài khoản còn hiệu lực' value={stats.active} icon={UserCheck} />
         </Box>
       </HStack>
 

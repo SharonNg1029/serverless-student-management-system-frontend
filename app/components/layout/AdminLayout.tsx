@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
-import { Outlet, NavLink, useLocation } from 'react-router'
+import React, { useState, useEffect } from 'react'
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router'
+import { Spinner, VStack, Text } from '@chakra-ui/react'
 import {
   LayoutDashboard,
   Users,
@@ -47,11 +48,77 @@ const SidebarItem: React.FC<{
 const AdminLayout: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Mobile state
   const [isCollapsed, setIsCollapsed] = useState(false) // Desktop state
+  const [checking, setChecking] = useState(true)
   const location = useLocation()
-  const { user } = useAuthStore()
+  const navigate = useNavigate()
+  const { user, isAuthenticated, isLoading, checkAuthStatus } = useAuthStore()
 
   const toggleSidebarMobile = () => setIsSidebarOpen(!isSidebarOpen)
   const toggleSidebarDesktop = () => setIsCollapsed(!isCollapsed)
+
+  // Check authentication on mount
+  useEffect(() => {
+    const verifyAuth = async () => {
+      // Kiểm tra localStorage trước
+      const authStorage = localStorage.getItem('auth-storage')
+      if (authStorage) {
+        try {
+          const parsed = JSON.parse(authStorage)
+          if (parsed?.state?.isAuthenticated && parsed?.state?.user) {
+            // Kiểm tra role Admin
+            if (parsed.state.user.role !== 'Admin') {
+              console.log('AdminLayout: Not admin, redirecting to home')
+              navigate('/home', { replace: true })
+              return
+            }
+            setChecking(false)
+            return
+          }
+        } catch (e) {
+          // Ignore parse error
+        }
+      }
+
+      // Nếu không có trong localStorage, check với Cognito
+      await checkAuthStatus()
+      setChecking(false)
+    }
+
+    verifyAuth()
+  }, [checkAuthStatus, navigate])
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!checking && !isLoading && !isAuthenticated) {
+      console.log('AdminLayout: Not authenticated, redirecting to login')
+      navigate('/auth/login', { replace: true })
+    }
+  }, [checking, isLoading, isAuthenticated, navigate])
+
+  // Redirect non-admin users
+  useEffect(() => {
+    if (!checking && !isLoading && isAuthenticated && user?.role !== 'Admin') {
+      console.log('AdminLayout: Not admin, redirecting to home')
+      navigate('/home', { replace: true })
+    }
+  }, [checking, isLoading, isAuthenticated, user, navigate])
+
+  // Show loading while checking auth
+  if (checking || isLoading) {
+    return (
+      <div className='min-h-screen flex items-center justify-center bg-slate-50'>
+        <VStack gap={4}>
+          <Spinner size='xl' color='#dd7323' />
+          <Text color='gray.500'>Đang kiểm tra quyền truy cập...</Text>
+        </VStack>
+      </div>
+    )
+  }
+
+  // Don't render content if not authenticated or not admin
+  if (!isAuthenticated || user?.role !== 'Admin') {
+    return null
+  }
 
   return (
     <div className='admin-layout flex h-screen w-full overflow-hidden bg-slate-50 font-sans'>

@@ -18,7 +18,7 @@ import {
 } from '@chakra-ui/react'
 import { FileText, Calendar, Award, Clock, Users, Lock, Unlock, Download, User, Check, X, Edit2 } from 'lucide-react'
 import type { AssignmentDTO } from '../../types'
-import { lecturerAssignmentApi } from '../../services/lecturerApi'
+import { lecturerAssignmentApi, openFileDownload } from '../../services/lecturerApi'
 import { toaster } from '../ui/toaster'
 import { fetchAuthSession } from '@aws-amplify/auth'
 
@@ -132,7 +132,7 @@ export default function AssignmentDetailModal({ isOpen, onClose, assignment, cla
       // Normalize classId - remove CLASS# prefix if present
       const normalizedClassId = classId.replace('CLASS#', '')
 
-      // API: POST /api/lecturer/assignments/{assignment_id}/update-grades?classId={classId}
+      // API: PUT /api/lecturer/assignments/{assignment_id}/update-grades?classId={classId}
       const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
       const url = `${baseUrl}/api/lecturer/assignments/${normalizedAssignmentId}/update-grades?classId=${normalizedClassId}`
 
@@ -148,7 +148,7 @@ export default function AssignmentDetailModal({ isOpen, onClose, assignment, cla
 
       console.log('=== GRADE API DEBUG ===')
       console.log('URL:', url)
-      console.log('Method: POST')
+      console.log('Method: PUT')
       console.log('classId (original):', classId)
       console.log('classId (normalized):', normalizedClassId)
       console.log('assignmentId (original):', assignment.id)
@@ -157,7 +157,7 @@ export default function AssignmentDetailModal({ isOpen, onClose, assignment, cla
       console.log('Request body:', JSON.stringify(requestBody, null, 2))
 
       const response = await fetch(url, {
-        method: 'POST',
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${idToken}`,
@@ -316,17 +316,42 @@ export default function AssignmentDetailModal({ isOpen, onClose, assignment, cla
                   </Box>
                 </HStack>
 
-                {/* Description */}
-                <Box>
-                  <Text fontSize='sm' fontWeight='medium' color='gray.600' mb={2}>
-                    Mô tả
-                  </Text>
-                  <Box p={3} bg='gray.50' borderRadius='lg'>
-                    <Text color={assignment.description ? 'gray.700' : 'gray.400'} whiteSpace='pre-wrap'>
-                      {assignment.description || 'Không có mô tả'}
-                    </Text>
-                  </Box>
-                </Box>
+                {/* File đính kèm - nếu description là fileKey (chứa "assignments/" hoặc có extension file) */}
+                {assignment.description &&
+                  assignment.description.trim() !== '' &&
+                  (assignment.description.includes('assignments/') ||
+                    /\.(pdf|doc|docx|zip|rar|png|jpg|jpeg|gif|ppt|pptx|xls|xlsx|txt)$/i.test(
+                      assignment.description
+                    )) && (
+                    <Box>
+                      <Text fontSize='sm' fontWeight='medium' color='gray.600' mb={2}>
+                        File đính kèm
+                      </Text>
+                      <HStack
+                        p={3}
+                        bg='orange.50'
+                        borderRadius='lg'
+                        cursor='pointer'
+                        _hover={{ bg: 'orange.100' }}
+                        onClick={async () => {
+                          try {
+                            await openFileDownload(assignment.description!)
+                          } catch (err: any) {
+                            toaster.create({
+                              title: 'Lỗi',
+                              description: err.message || 'Không thể tải file',
+                              type: 'error'
+                            })
+                          }
+                        }}
+                      >
+                        <Download size={16} color='#dd7323' />
+                        <Text fontSize='sm' color='#dd7323' fontWeight='medium'>
+                          Tải file đính kèm
+                        </Text>
+                      </HStack>
+                    </Box>
+                  )}
 
                 {/* Submissions List */}
                 <Box>
@@ -380,10 +405,24 @@ export default function AssignmentDetailModal({ isOpen, onClose, assignment, cla
                                 <Table.Cell py={2} px={3}>
                                   {sub.file_url || sub.fileUrl ? (
                                     <Link
-                                      href={sub.file_url || sub.fileUrl}
-                                      target='_blank'
                                       color='blue.500'
                                       fontSize='sm'
+                                      cursor='pointer'
+                                      onClick={async (e) => {
+                                        e.preventDefault()
+                                        const fileKey = sub.file_url || sub.fileUrl
+                                        if (fileKey) {
+                                          try {
+                                            await openFileDownload(fileKey)
+                                          } catch (err: any) {
+                                            toaster.create({
+                                              title: 'Lỗi',
+                                              description: err.message || 'Không thể tải file',
+                                              type: 'error'
+                                            })
+                                          }
+                                        }
+                                      }}
                                     >
                                       <HStack gap={1}>
                                         <Download size={12} />

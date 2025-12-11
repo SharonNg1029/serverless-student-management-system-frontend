@@ -86,25 +86,25 @@ const UsersList: React.FC = () => {
   }
 
   // Fetch users from API
+  // NOTE: API chỉ hỗ trợ filter theo role_id, keyword filter sẽ thực hiện trên client
   const fetchUsers = async () => {
     try {
       setLoading(true)
 
       let allUsers: UserDisplay[] = []
+      const searchKeyword = debouncedKeyword.trim()
 
-      // Nếu có keyword search hoặc chọn role cụ thể
-      if (debouncedKeyword.trim() || roleId) {
-        const params: Record<string, string> = {}
-        if (debouncedKeyword.trim()) params.keyword = debouncedKeyword.trim()
-        if (roleId) params.role_id = roleId
+      // Nếu có chọn role cụ thể
+      if (roleId) {
+        // Chỉ gửi role_id, KHÔNG gửi keyword vì BE có thể không hỗ trợ
+        const params: Record<string, string> = { role_id: roleId }
 
         const response = await api.get('/api/admin/users', { params })
-        console.log('=== USERS API RESPONSE (filtered) ===', response.data)
+        console.log('=== USERS API RESPONSE (role filtered) ===', response.data)
         const usersData = extractUsersFromResponse(response.data)
-        console.log('=== EXTRACTED USERS ===', usersData)
         allUsers = usersData.map(transformUser)
       } else {
-        // Mặc định: Load cả Student (3) và Lecturer (2) song song
+        // Không chọn role: Load cả Student (3) và Lecturer (2) song song
         const [studentsRes, lecturersRes] = await Promise.all([
           api.get('/api/admin/users', { params: { role_id: '3' } }),
           api.get('/api/admin/users', { params: { role_id: '2' } })
@@ -116,12 +116,21 @@ const UsersList: React.FC = () => {
         const studentsData = extractUsersFromResponse(studentsRes.data)
         const lecturersData = extractUsersFromResponse(lecturersRes.data)
 
-        console.log('=== EXTRACTED STUDENTS ===', studentsData)
-        console.log('=== EXTRACTED LECTURERS ===', lecturersData)
-
         const students = studentsData.map(transformUser)
         const lecturers = lecturersData.map(transformUser)
+
         allUsers = [...lecturers, ...students] // Lecturer trước, Student sau
+      }
+
+      // Filter trên client theo keyword (tên, email, mã)
+      if (searchKeyword) {
+        const lowerKeyword = searchKeyword.toLowerCase()
+        allUsers = allUsers.filter(
+          (u) =>
+            u.name?.toLowerCase().includes(lowerKeyword) ||
+            u.email?.toLowerCase().includes(lowerKeyword) ||
+            u.codeUser?.toLowerCase().includes(lowerKeyword)
+        )
       }
 
       console.log('=== FINAL USERS TO DISPLAY ===', allUsers)

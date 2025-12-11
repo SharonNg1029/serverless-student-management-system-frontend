@@ -30,6 +30,7 @@ import CreateAssignmentModal, { type AssignmentFormData } from './CreateAssignme
 import EditAssignmentModal, { type EditAssignmentFormData } from './EditAssignmentModal'
 import AssignmentDetailModal from './AssignmentDetailModal'
 import { lecturerAssignmentApi } from '../../services/lecturerApi'
+import api from '../../utils/axios'
 import { toaster } from '../ui/toaster'
 import type { AssignmentDTO } from '../../types'
 
@@ -304,11 +305,46 @@ export default function LecturerAssignmentTab({ classId }: AssignmentTabProps) {
   }
 
   const handleCreateAssignment = async (data: AssignmentFormData) => {
+    // Upload file to S3 first if any
+    let fileKey: string | undefined
+    if (data.files && data.files.length > 0) {
+      const file = data.files[0] // Chỉ lấy file đầu tiên
+      try {
+        // Step 1: Get presigned URL
+        const { data: presignedData } = await api.get('/api/upload/presigned-url', {
+          params: { fileName: file.name }
+        })
+
+        // Step 2: Upload to S3
+        const uploadResponse = await fetch(presignedData.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/octet-stream' },
+          body: file
+        })
+
+        if (!uploadResponse.ok) {
+          throw new Error('Lỗi khi upload file lên S3')
+        }
+
+        fileKey = presignedData.fileKey
+        console.log('File uploaded, fileKey:', fileKey)
+      } catch (err: any) {
+        console.error('Failed to upload file:', err)
+        toaster.create({
+          title: 'Lỗi',
+          description: err.message || 'Không thể upload file',
+          type: 'error'
+        })
+        return
+      }
+    }
+
     // Use new API: POST /api/lecturer/assignments
+    // description chứa fileKey nếu có file đính kèm
     await lecturerAssignmentApi.createAssignment({
       class_id: classId, // Pass as string, API will handle
       title: data.title,
-      description: data.description,
+      description: fileKey || data.description, // Ưu tiên fileKey nếu có
       type: data.type,
       deadline: data.deadline,
       max_score: data.max_score,

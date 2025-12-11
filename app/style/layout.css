@@ -17,6 +17,8 @@ body {
   height: 100%;
   margin: 0;
   padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 /* Override background for admin layout */
@@ -35,6 +37,8 @@ body:has(.admin-layout) {
   min-height: 100vh;
   background-color: #f8f9fa;
   position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .layout-content {

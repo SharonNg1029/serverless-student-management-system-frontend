@@ -23,8 +23,18 @@ import type { CalendarAssignment, CalendarDay } from '~/types'
 
 const DAYS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
 const MONTHS = [
-  'Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
-  'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'
+  'Tháng 1',
+  'Tháng 2',
+  'Tháng 3',
+  'Tháng 4',
+  'Tháng 5',
+  'Tháng 6',
+  'Tháng 7',
+  'Tháng 8',
+  'Tháng 9',
+  'Tháng 10',
+  'Tháng 11',
+  'Tháng 12'
 ]
 
 // Assignment type colors
@@ -52,11 +62,14 @@ export default function StudentCalendar() {
   const [selectedAssignment, setSelectedAssignment] = useState<CalendarAssignment | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
 
-  // Fetch assignments
-  const { data: assignments = [], isLoading } = useQuery({
-    queryKey: ['calendar-assignments', currentDate.getMonth(), currentDate.getFullYear()],
-    queryFn: () => fetchCalendarAssignments(currentDate.getMonth() + 1, currentDate.getFullYear())
-  })
+  // Calendar assignments - fix cứng empty array vì BE chưa có API
+  // TODO: Khi BE có API /student/assignments/calendar thì bỏ comment dòng dưới
+  const assignments: CalendarAssignment[] = []
+  const isLoading = false
+  // const { data: assignments = [], isLoading } = useQuery({
+  //   queryKey: ['calendar-assignments', currentDate.getMonth(), currentDate.getFullYear()],
+  //   queryFn: () => fetchCalendarAssignments(currentDate.getMonth() + 1, currentDate.getFullYear())
+  // })
 
   // Generate calendar days
   const calendarDays = useMemo<CalendarDayWithAssignments[]>(() => {
@@ -170,19 +183,27 @@ export default function StudentCalendar() {
               <Flex gap={4} flexWrap='wrap'>
                 <HStack gap={2}>
                   <Circle size='3' bg='green.500' />
-                  <Text fontSize='sm' color='gray.600'>Bài tập</Text>
+                  <Text fontSize='sm' color='gray.600'>
+                    Bài tập
+                  </Text>
                 </HStack>
                 <HStack gap={2}>
                   <Circle size='3' bg='purple.500' />
-                  <Text fontSize='sm' color='gray.600'>Dự án</Text>
+                  <Text fontSize='sm' color='gray.600'>
+                    Dự án
+                  </Text>
                 </HStack>
                 <HStack gap={2}>
                   <Circle size='3' bg='#dd7323' />
-                  <Text fontSize='sm' color='gray.600'>Giữa kỳ</Text>
+                  <Text fontSize='sm' color='gray.600'>
+                    Giữa kỳ
+                  </Text>
                 </HStack>
                 <HStack gap={2}>
                   <Circle size='3' bg='red.500' />
-                  <Text fontSize='sm' color='gray.600'>Cuối kỳ</Text>
+                  <Text fontSize='sm' color='gray.600'>
+                    Cuối kỳ
+                  </Text>
                 </HStack>
               </Flex>
             </Flex>
@@ -197,7 +218,14 @@ export default function StudentCalendar() {
             </VStack>
           </Center>
         ) : (
-          <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.200' shadow='sm' overflow='hidden'>
+          <Card.Root
+            bg='white'
+            borderRadius='xl'
+            border='1px solid'
+            borderColor='orange.200'
+            shadow='sm'
+            overflow='hidden'
+          >
             {/* Day headers */}
             <Grid templateColumns='repeat(7, 1fr)' bg='orange.50'>
               {DAYS.map((day) => (
@@ -210,10 +238,7 @@ export default function StudentCalendar() {
             </Grid>
 
             {/* Calendar grid */}
-            <Grid
-              templateColumns='repeat(7, 1fr)'
-              templateRows={`repeat(${Math.ceil(calendarDays.length / 7)}, 1fr)`}
-            >
+            <Grid templateColumns='repeat(7, 1fr)' templateRows={`repeat(${Math.ceil(calendarDays.length / 7)}, 1fr)`}>
               {calendarDays.map((day, index) => (
                 <GridItem
                   key={index}
@@ -235,14 +260,7 @@ export default function StudentCalendar() {
                     mb={1}
                   >
                     {day.isToday ? (
-                      <Circle
-                        size='7'
-                        bg='#dd7323'
-                        color='white'
-                        display='inline-flex'
-                        fontSize='sm'
-                        fontWeight='bold'
-                      >
+                      <Circle size='7' bg='#dd7323' color='white' display='inline-flex' fontSize='sm' fontWeight='bold'>
                         {day.date.getDate()}
                       </Circle>
                     ) : (
@@ -283,11 +301,7 @@ export default function StudentCalendar() {
         )}
 
         {/* Assignment Modal */}
-        <AssignmentModal
-          isOpen={modalOpen}
-          onClose={() => setModalOpen(false)}
-          assignment={selectedAssignment}
-        />
+        <AssignmentModal isOpen={modalOpen} onClose={() => setModalOpen(false)} assignment={selectedAssignment} />
       </Box>
     </Box>
   )

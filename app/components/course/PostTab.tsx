@@ -19,8 +19,9 @@ import { MessageSquare, Heart, Pin, ChevronDown, ChevronUp, Send, Trash2 } from 
 import ReactMarkdown from 'react-markdown'
 import StatsCard from '../ui/StatsCard'
 import EmptyState from '../ui/EmptyState'
-import { studentPostApi } from '../../services/studentApi'
+import { studentPostApi, openFileDownload } from '../../services/studentApi'
 import { toaster } from '../ui/toaster'
+import { useAuthStore } from '../../store/authStore'
 
 // ============================================
 // MOCK DATA - Set to false to use real API
@@ -337,6 +338,12 @@ function PostCard({ post, classId: _classId, onLike }: PostCardProps) {
   const [newComment, setNewComment] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // Lấy thông tin user hiện tại để kiểm tra quyền xóa comment
+  // user.username chứa codeUser (ví dụ: "EN2512092037") - đây là ID dùng để so sánh với senderId
+  const { user } = useAuthStore()
+  // Ưu tiên username (codeUser) vì đây là format giống senderId từ BE
+  const currentUserId = user?.username || user?.id || ''
+
   // Get post ID - BE có thể trả về id, postId, hoặc post_id
   const postId = String(post.postId || post.post_id || post.id || '')
 
@@ -344,6 +351,7 @@ function PostCard({ post, classId: _classId, onLike }: PostCardProps) {
   console.log('=== STUDENT POST DATA DEBUG ===')
   console.log('Post object:', post)
   console.log('Post ID extracted:', postId)
+  console.log('Current User ID (username/codeUser):', currentUserId)
 
   // Handle both field formats
   const authorName = post.lecturer_name || post.author_name || 'Giảng viên'
@@ -539,12 +547,18 @@ function PostCard({ post, classId: _classId, onLike }: PostCardProps) {
               ) : (
                 <>
                   {comments.map((comment) => {
+                    // Lấy senderId từ API response
+                    const senderId = (comment as any).senderId || (comment as any).sender_id || ''
+                    // Lấy tên hiển thị: sender_name > senderId > fallback
                     const commentAuthor =
                       comment.sender_name ||
                       comment.senderName ||
                       comment.author_name ||
                       comment.authorName ||
-                      'Ẩn danh'
+                      senderId ||
+                      'Người dùng'
+                    // Kiểm tra xem comment có phải của user hiện tại không
+                    const isOwnComment = senderId && currentUserId && senderId === currentUserId
                     return (
                       <HStack key={comment.id} align='flex-start' gap={3}>
                         <Avatar.Root size='sm'>
@@ -561,15 +575,18 @@ function PostCard({ post, classId: _classId, onLike }: PostCardProps) {
                                 {getRelativeTime(getDateStr(comment))}
                               </Text>
                             </HStack>
-                            <IconButton
-                              aria-label='Xóa bình luận'
-                              size='xs'
-                              variant='ghost'
-                              colorPalette='red'
-                              onClick={() => handleDeleteComment(comment.id)}
-                            >
-                              <Trash2 size={14} />
-                            </IconButton>
+                            {/* Chỉ hiển thị nút xóa nếu comment là của user hiện tại */}
+                            {isOwnComment && (
+                              <IconButton
+                                aria-label='Xóa bình luận'
+                                size='xs'
+                                variant='ghost'
+                                colorPalette='red'
+                                onClick={() => handleDeleteComment(comment.id)}
+                              >
+                                <Trash2 size={14} />
+                              </IconButton>
+                            )}
                           </HStack>
                           <Text fontSize='sm' color='gray.700'>
                             {comment.content}

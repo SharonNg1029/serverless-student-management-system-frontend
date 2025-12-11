@@ -58,7 +58,7 @@ export default function NotificationBell({ variant }: NotificationBellProps) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const { isOpen, toggleNotificationPanel, closeNotificationPanel } = useNotificationUIStore()
   const [unreadCount, setUnreadCount] = useState(0)
-  const [isLoading, setIsLoading] = useState(false)
+  const [, setIsLoading] = useState(false)
   const { user } = useAuthStore()
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -80,17 +80,72 @@ export default function NotificationBell({ variant }: NotificationBellProps) {
       let allNotifications: NotificationFromAPI[] = []
 
       if (user.role === 'Student') {
-        // === Student: Gọi 2 API để lấy system và class notifications ===
-        const [systemResponse, classResponse] = await Promise.all([
-          api.get('/api/student/notifications', { params: { type: 'system' } }),
-          api.get('/api/student/notifications', { params: { type: 'class' } })
+        // === Student: Gọi API /api/notifications (giống Lecturer) và enrolled classes ===
+        // Lấy idToken từ Cognito session
+        const session = await fetchAuthSession()
+        const idToken = session.tokens?.idToken?.toString()
+
+        if (!idToken) {
+          throw new Error('Không tìm thấy token xác thực')
+        }
+
+        const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+
+        // Gọi song song: notifications và enrolled classes
+        const [notificationsResponse, enrolledResponse] = await Promise.all([
+          fetch(`${baseUrl}/api/notifications`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+              'user-idToken': idToken
+            }
+          }),
+          fetch(`${baseUrl}/api/student/classes/enrolled`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+              'user-idToken': idToken
+            }
+          })
         ])
 
-        // BE trả về { data: [...], count, message, status }
-        const systemNotis = (systemResponse.data as any)?.data || systemResponse.data?.results || []
-        const classNotis = (classResponse.data as any)?.data || classResponse.data?.results || []
+        // Parse notifications response
+        let fetchedNotifications: NotificationFromAPI[] = []
+        if (notificationsResponse.ok) {
+          const notisData = await notificationsResponse.json()
+          fetchedNotifications = notisData.data || notisData.results || []
+        }
 
-        allNotifications = [...systemNotis, ...classNotis]
+        // Lấy danh sách classId đã enrolled
+        let enrolledClassIds: string[] = []
+        if (enrolledResponse.ok) {
+          const enrolledData = await enrolledResponse.json()
+          const enrolledClasses = enrolledData.data || enrolledData.results || []
+          enrolledClassIds = enrolledClasses.map((c: any) => c.id || c.classId || c.class_id)
+        }
+
+        // Filter notifications cho Student:
+        // - type: "system" → show luôn
+        // - type: "class" → chỉ show nếu student đã enrolled class đó
+        allNotifications = fetchedNotifications.filter((n: NotificationFromAPI) => {
+          const notificationType = (n.type || 'system').toLowerCase()
+
+          // System notifications → show luôn
+          if (notificationType === 'system') {
+            return true
+          }
+
+          // Class notifications → chỉ show nếu student đã enrolled class đó
+          if (notificationType === 'class') {
+            const notificationClassId = n.classId || (n as any).class_id
+            return notificationClassId && enrolledClassIds.includes(notificationClassId)
+          }
+
+          // Các type khác → show luôn (fallback)
+          return true
+        })
       } else {
         // === Lecturer/Admin: Gọi API /api/notifications với header đặc biệt ===
         // API này yêu cầu cả Authorization và user-idToken đều dùng idToken
@@ -117,7 +172,50 @@ export default function NotificationBell({ variant }: NotificationBellProps) {
 
         const data = await response.json()
         // BE trả về { data: [...], count, message, status }
-        allNotifications = data.data || data.results || []
+        let fetchedNotifications = data.data || data.results || []
+
+        // === Filter notifications cho Lecturer ===
+        // - type: "system" → show luôn
+        // - type: "class" → chỉ show nếu GV có classId đó trong danh sách lớp của mình
+        if (user.role === 'Lecturer') {
+          // Fetch danh sách lớp của GV
+          const classesResponse = await fetch(`${baseUrl}/api/lecturer/classes`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+              'user-idToken': idToken
+            }
+          })
+
+          let lecturerClassIds: string[] = []
+          if (classesResponse.ok) {
+            const classesData = await classesResponse.json()
+            const classes = classesData.data || classesData.results || []
+            lecturerClassIds = classes.map((c: any) => c.id)
+          }
+
+          // Filter notifications
+          fetchedNotifications = fetchedNotifications.filter((n: NotificationFromAPI) => {
+            const notificationType = (n.type || 'system').toLowerCase()
+
+            // System notifications → show luôn
+            if (notificationType === 'system') {
+              return true
+            }
+
+            // Class notifications → chỉ show nếu GV có classId đó
+            if (notificationType === 'class') {
+              const notificationClassId = n.classId
+              return notificationClassId && lecturerClassIds.includes(notificationClassId)
+            }
+
+            // Các type khác → show luôn (fallback)
+            return true
+          })
+        }
+
+        allNotifications = fetchedNotifications
       }
 
       // Map API response to local format

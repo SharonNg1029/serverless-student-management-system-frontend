@@ -14,7 +14,7 @@ import {
   Box,
   Icon
 } from '@chakra-ui/react'
-import { BookOpen, Users, LogOut, Eye, Calendar, Key } from 'lucide-react'
+import { BookOpen, Users, LogOut, Eye, Calendar, Key, User, GraduationCap } from 'lucide-react'
 
 // Background gradients matching SubjectClassCard
 const CARD_BACKGROUNDS = [
@@ -39,10 +39,15 @@ function getBackgroundIndex(classId: string): number {
 
 export interface EnrolledClass {
   classId: string
+  className: string // Tên lớp (e.g., "CS101-VY")
   subjectId: string
   subjectName: string
+  lecturerId: string // Mã GV (e.g., "GV2512092023")
   lecturerName: string
   totalStudents: number
+  academicYear: string // Năm học (e.g., "2025-2026")
+  semester: string // Học kỳ
+  status: number // 1 = đang hoạt động, 0 = đã kết thúc
   enrolledAt?: string
 }
 
@@ -85,36 +90,40 @@ export default function CourseCard({ course, onViewDetails, onUnenroll }: Course
       >
         {/* Card Image Area with gradient */}
         <Box h='140px' position='relative' bgGradient={background}>
-          {/* Subject Badge */}
-          <Box
-            position='absolute'
-            top={3}
-            left={3}
-            bg='#dd7323'
-            color='white'
-            px={3}
-            py={1}
-            borderRadius='md'
-            fontSize='xs'
-            fontWeight='semibold'
-            maxW='200px'
-            truncate
-          >
-            {course.subjectName}
-          </Box>
+          {/* Subject Badge - chỉ hiển thị nếu có */}
+          {course.subjectName && (
+            <Box
+              position='absolute'
+              top={3}
+              left={3}
+              bg='#dd7323'
+              color='white'
+              px={3}
+              py={1}
+              borderRadius='md'
+              fontSize='xs'
+              fontWeight='semibold'
+              maxW='200px'
+              truncate
+            >
+              {course.subjectName}
+            </Box>
+          )}
 
-          {/* Enrolled Badge */}
-          <Badge
-            position='absolute'
-            top={3}
-            right={3}
-            colorPalette='green'
-            variant='solid'
-            size='sm'
-            borderRadius='full'
-          >
-            Enrolled
-          </Badge>
+          {/* Status Badge - chỉ hiển thị nếu status được định nghĩa */}
+          {course.status !== undefined && course.status !== null && (
+            <Badge
+              position='absolute'
+              top={3}
+              right={3}
+              colorPalette={course.status === 1 ? 'green' : 'gray'}
+              variant='solid'
+              size='sm'
+              borderRadius='full'
+            >
+              {course.status === 1 ? 'Đang học' : 'Đã kết thúc'}
+            </Badge>
+          )}
 
           {/* Key Icon */}
           <Box position='absolute' bottom={3} right={3} bg='white' p={2} borderRadius='full' shadow='md'>
@@ -126,28 +135,48 @@ export default function CourseCard({ course, onViewDetails, onUnenroll }: Course
 
         {/* Card Content */}
         <Box p={4}>
-          {/* Class ID and Lecturer */}
-          <Text fontSize='sm' color='#dd7323' fontWeight='semibold' mb={2}>
-            {course.classId} - {course.lecturerName}
+          {/* Class Name */}
+          <Text fontSize='md' color='gray.800' fontWeight='bold' mb={1} lineClamp={1}>
+            {course.className || course.classId}
           </Text>
 
-          {/* Stats */}
-          <HStack gap={4} mb={3} color='gray.600' fontSize='sm'>
-            <HStack gap={1}>
+          {/* Lecturer ID - chỉ hiển thị nếu có */}
+          {course.lecturerId && (
+            <HStack gap={1} mb={2}>
               <Icon asChild color='gray.400'>
-                <Users size={14} />
+                <User size={12} />
               </Icon>
-              <Text>{course.totalStudents} SV</Text>
+              <Text fontSize='xs' color='gray.500'>
+                GV: {course.lecturerId}
+              </Text>
             </HStack>
-            {course.enrolledAt && (
-              <HStack gap={1}>
-                <Icon asChild color='gray.400'>
-                  <Calendar size={14} />
-                </Icon>
-                <Text>{new Date(course.enrolledAt).toLocaleDateString('vi-VN')}</Text>
-              </HStack>
-            )}
-          </HStack>
+          )}
+
+          {/* Stats - chỉ hiển thị các field có dữ liệu */}
+          <VStack gap={1} mb={3} align='stretch'>
+            <HStack gap={4} color='gray.600' fontSize='xs' flexWrap='wrap'>
+              {course.totalStudents > 0 && (
+                <HStack gap={1}>
+                  <Icon asChild color='gray.400'>
+                    <Users size={12} />
+                  </Icon>
+                  <Text>{course.totalStudents} SV</Text>
+                </HStack>
+              )}
+              {(course.semester || course.academicYear) && (
+                <HStack gap={1}>
+                  <Icon asChild color='gray.400'>
+                    <GraduationCap size={12} />
+                  </Icon>
+                  <Text>
+                    {course.semester && `HK${course.semester}`}
+                    {course.semester && course.academicYear && ' - '}
+                    {course.academicYear}
+                  </Text>
+                </HStack>
+              )}
+            </HStack>
+          </VStack>
 
           {/* Actions */}
           <HStack gap={2}>

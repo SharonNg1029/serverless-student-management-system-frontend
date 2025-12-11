@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { Bell, Trash2, Loader2 } from 'lucide-react'
-import api from '../../utils/axios'
 import { fetchAuthSession } from '@aws-amplify/auth'
 
 // API response format from BE
@@ -17,10 +16,9 @@ interface NotificationFromAPI {
   classId?: string
 }
 
-interface EnrolledClass {
+interface LecturerClass {
   id: string
-  classId?: string
-  class_id?: string
+  name?: string
 }
 
 interface Notification {
@@ -47,7 +45,7 @@ const mapNotificationType = (type?: string): 'system' | 'class' => {
   }
 }
 
-export default function NotificationsReceiveRoute() {
+export default function LecturerNotificationsRoute() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<'all' | 'system' | 'class'>('all')
@@ -65,8 +63,8 @@ export default function NotificationsReceiveRoute() {
 
       const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 
-      // Gọi song song: notifications và enrolled classes
-      const [notificationsResponse, enrolledResponse] = await Promise.all([
+      // Gọi song song: notifications và lecturer classes
+      const [notificationsResponse, classesResponse] = await Promise.all([
         fetch(`${baseUrl}/api/notifications`, {
           method: 'GET',
           headers: {
@@ -75,7 +73,7 @@ export default function NotificationsReceiveRoute() {
             'user-idToken': idToken
           }
         }),
-        fetch(`${baseUrl}/api/student/classes/enrolled`, {
+        fetch(`${baseUrl}/api/lecturer/classes`, {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -92,17 +90,17 @@ export default function NotificationsReceiveRoute() {
         allNotifications = notisData.data || notisData.results || []
       }
 
-      // Lấy danh sách classId đã enrolled
-      let enrolledClassIds: string[] = []
-      if (enrolledResponse.ok) {
-        const enrolledData = await enrolledResponse.json()
-        const enrolledClasses: EnrolledClass[] = enrolledData.data || enrolledData.results || []
-        enrolledClassIds = enrolledClasses.map((c) => c.id || c.classId || c.class_id || '')
+      // Lấy danh sách classId của GV
+      let lecturerClassIds: string[] = []
+      if (classesResponse.ok) {
+        const classesData = await classesResponse.json()
+        const classes: LecturerClass[] = classesData.data || classesData.results || []
+        lecturerClassIds = classes.map((c) => c.id)
       }
 
-      // Filter notifications cho Student:
+      // Filter notifications cho Lecturer:
       // - type: "system" → show luôn
-      // - type: "class" → chỉ show nếu student đã enrolled class đó
+      // - type: "class" → chỉ show nếu GV có classId đó
       const filteredNotifications = allNotifications.filter((n: NotificationFromAPI) => {
         const notificationType = (n.type || 'system').toLowerCase()
 
@@ -111,10 +109,10 @@ export default function NotificationsReceiveRoute() {
           return true
         }
 
-        // Class notifications → chỉ show nếu student đã enrolled class đó
+        // Class notifications → chỉ show nếu GV có classId đó
         if (notificationType === 'class') {
           const notificationClassId = n.classId
-          return notificationClassId && enrolledClassIds.includes(notificationClassId)
+          return notificationClassId && lecturerClassIds.includes(notificationClassId)
         }
 
         // Các type khác → show luôn (fallback)
@@ -145,25 +143,49 @@ export default function NotificationsReceiveRoute() {
     fetchNotifications()
   }, [fetchNotifications])
 
-  const handleDelete = async (id: string) => {
+  const handleMarkAsRead = async (id: string) => {
     try {
+      const session = await fetchAuthSession()
+      const idToken = session.tokens?.idToken?.toString()
+      const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+
       // Optimistic update
-      setNotifications(notifications.filter((n) => n.id !== id))
-      // API call (if exists)
-      await api.delete(`/api/notifications/${id}`).catch(() => {})
+      setNotifications(notifications.map((n) => (n.id === id ? { ...n, read: true } : n)))
+
+      // API: PATCH /api/notifications/:id/read
+      await fetch(`${baseUrl}/api/notifications/${id}/read`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+          'user-idToken': idToken || ''
+        }
+      }).catch(() => {})
     } catch (error) {
-      console.error('Failed to delete notification:', error)
+      console.error('Failed to mark as read:', error)
     }
   }
 
-  const handleMarkAsRead = async (id: string) => {
+  const handleDelete = async (id: string) => {
     try {
+      const session = await fetchAuthSession()
+      const idToken = session.tokens?.idToken?.toString()
+      const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+
       // Optimistic update
-      setNotifications(notifications.map((n) => (n.id === id ? { ...n, read: true } : n)))
-      // API: PATCH /api/notifications/:id/read
-      await api.patch(`/api/notifications/${id}/read`).catch(() => {})
+      setNotifications(notifications.filter((n) => n.id !== id))
+
+      // API call
+      await fetch(`${baseUrl}/api/notifications/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+          'user-idToken': idToken || ''
+        }
+      }).catch(() => {})
     } catch (error) {
-      console.error('Failed to mark as read:', error)
+      console.error('Failed to delete notification:', error)
     }
   }
 
@@ -191,7 +213,7 @@ export default function NotificationsReceiveRoute() {
   const getNotificationColor = (type: string) => {
     switch (type) {
       case 'system':
-        return 'border-l-slate-400 bg-slate-50'
+        return 'border-l-orange-400 bg-orange-50'
       case 'class':
         return 'border-l-blue-500 bg-blue-50'
       default:
@@ -214,13 +236,13 @@ export default function NotificationsReceiveRoute() {
   }
 
   return (
-    <div className='w-full py-8 px-4 sm:px-6 lg:px-8 bg-slate-50'>
+    <div className='w-full py-8 px-4 sm:px-6 lg:px-8 bg-white'>
       <div className='max-w-4xl mx-auto'>
         {/* Header */}
         <div className='mb-8'>
           <h1 className='text-3xl font-bold text-slate-900'>Thông báo</h1>
           <p className='text-slate-600 mt-1'>
-            {unreadCount} thông báo chưa đọc {unreadCount > 0 && `(${unreadCount})`}
+            {unreadCount > 0 ? `${unreadCount} thông báo chưa đọc` : 'Không có thông báo chưa đọc'}
           </p>
         </div>
 
@@ -233,7 +255,7 @@ export default function NotificationsReceiveRoute() {
               className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
                 filter === type
                   ? 'bg-[#dd7323] text-white'
-                  : 'bg-white text-slate-600 border border-slate-200 hover:border-slate-300'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:border-[#dd7323]'
               }`}
             >
               {type === 'all' ? 'Tất cả' : type === 'system' ? 'Hệ thống' : 'Lớp học'}
@@ -264,7 +286,7 @@ export default function NotificationsReceiveRoute() {
                     <div className='flex items-start justify-between gap-2'>
                       <div className='flex-1'>
                         <div className='flex items-center gap-2'>
-                          <h3 className={`font-semibold ${!notification.read ? 'text-slate-900' : 'text-slate-800'}`}>
+                          <h3 className={`font-semibold ${!notification.read ? 'text-slate-900' : 'text-slate-700'}`}>
                             {notification.title}
                           </h3>
                           {!notification.read && (

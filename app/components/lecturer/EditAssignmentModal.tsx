@@ -8,7 +8,6 @@ import {
   HStack,
   Button,
   Input,
-  Textarea,
   NativeSelect,
   Field,
   Dialog,
@@ -16,8 +15,11 @@ import {
   CloseButton,
   Checkbox
 } from '@chakra-ui/react'
-import { FileText, Unlock } from 'lucide-react'
+import { FileText, Unlock, Upload, X, Download } from 'lucide-react'
 import type { AssignmentType, AssignmentDTO } from '../../types'
+import api from '../../utils/axios'
+import { openFileDownload } from '../../services/lecturerApi'
+import { toaster } from '../ui/toaster'
 
 interface EditAssignmentModalProps {
   isOpen: boolean
@@ -28,12 +30,13 @@ interface EditAssignmentModalProps {
 
 export interface EditAssignmentFormData {
   title: string
-  description: string
+  description: string // fileKey sẽ được lưu ở đây
   type: AssignmentType
   deadline: string
   maxScore: number
   weight: number // Trọng số (0-1)
   isPublished: boolean
+  newFile?: File // File mới để upload
 }
 
 const TYPE_OPTIONS: { value: AssignmentType; label: string; weight: string }[] = [
@@ -51,10 +54,13 @@ export default function EditAssignmentModal({ isOpen, onClose, onSubmit, assignm
     deadline: '',
     maxScore: 10,
     weight: 0.2,
-    isPublished: true
+    isPublished: true,
+    newFile: undefined
   })
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // Lưu fileKey hiện tại từ assignment để hiển thị
+  const [currentFileKey, setCurrentFileKey] = useState<string>('')
 
   // Populate form when assignment changes
   useEffect(() => {
@@ -68,23 +74,42 @@ export default function EditAssignmentModal({ isOpen, onClose, onSubmit, assignm
         }
       }
 
+      // Kiểm tra description có phải là fileKey không
+      const desc = assignment.description || ''
+      const isFileKey =
+        desc.includes('assignments/') || /\.(pdf|doc|docx|zip|rar|png|jpg|jpeg|gif|ppt|pptx|xls|xlsx|txt)$/i.test(desc)
+
+      setCurrentFileKey(isFileKey ? desc : '')
+
       setFormData({
         title: assignment.title || '',
-        description: assignment.description || '',
+        description: desc,
         type: assignment.type || 'homework',
         deadline: deadlineFormatted,
         maxScore: assignment.max_score || 10,
         weight: assignment.weight || 0.2,
-        isPublished: assignment.is_published ?? true
+        isPublished: assignment.is_published ?? true,
+        newFile: undefined
       })
     }
   }, [assignment])
 
-  const handleChange = (field: keyof EditAssignmentFormData, value: string | number | boolean) => {
+  const handleChange = (field: keyof EditAssignmentFormData, value: string | number | boolean | File | undefined) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: '' }))
     }
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      handleChange('newFile', file)
+    }
+  }
+
+  const removeNewFile = () => {
+    handleChange('newFile', undefined)
   }
 
   const validate = (): boolean => {
@@ -106,7 +131,42 @@ export default function EditAssignmentModal({ isOpen, onClose, onSubmit, assignm
     if (!validate()) return
     setLoading(true)
     try {
-      await onSubmit(formData)
+      let finalDescription = formData.description
+
+      // Nếu có file mới, upload lên S3 và lấy fileKey
+      if (formData.newFile) {
+        try {
+          // Step 1: Get presigned URL
+          const { data: presignedData } = await api.get('/api/upload/presigned-url', {
+            params: { fileName: formData.newFile.name }
+          })
+
+          // Step 2: Upload to S3
+          const uploadResponse = await fetch(presignedData.uploadUrl, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/octet-stream' },
+            body: formData.newFile
+          })
+
+          if (!uploadResponse.ok) {
+            throw new Error('Lỗi khi upload file lên S3')
+          }
+
+          finalDescription = presignedData.fileKey
+          console.log('File uploaded, fileKey:', finalDescription)
+        } catch (err: any) {
+          console.error('Failed to upload file:', err)
+          toaster.create({
+            title: 'Lỗi',
+            description: err.message || 'Không thể upload file',
+            type: 'error'
+          })
+          setLoading(false)
+          return
+        }
+      }
+
+      await onSubmit({ ...formData, description: finalDescription })
       onClose()
     } catch (err) {
       console.error('Failed to update assignment:', err)
@@ -236,17 +296,92 @@ export default function EditAssignmentModal({ isOpen, onClose, onSubmit, assignm
                   />
                 </Field.Root>
 
-                {/* Description */}
+                {/* File đính kèm */}
                 <Field.Root>
-                  <Field.Label fontWeight='medium'>Mô tả</Field.Label>
-                  <Textarea
-                    placeholder='Nhập mô tả bài tập...'
-                    value={formData.description}
-                    onChange={(e) => handleChange('description', e.target.value)}
-                    rows={4}
+                  <Field.Label fontWeight='medium'>File đính kèm</Field.Label>
+
+                  {/* Hiển thị file hiện tại nếu có */}
+                  {currentFileKey && !formData.newFile && (
+                    <HStack
+                      p={3}
+                      bg='orange.50'
+                      borderRadius='lg'
+                      justify='space-between'
+                      mb={3}
+                      _hover={{ bg: 'orange.100' }}
+                      transition='all 0.2s'
+                    >
+                      <HStack gap={2}>
+                        <FileText size={18} color='#dd7323' />
+                        <Text fontSize='sm' color='gray.700'>
+                          File hiện tại
+                        </Text>
+                      </HStack>
+                      <Button
+                        size='sm'
+                        variant='ghost'
+                        color='#dd7323'
+                        onClick={async () => {
+                          try {
+                            await openFileDownload(currentFileKey)
+                          } catch (err: any) {
+                            toaster.create({
+                              title: 'Lỗi',
+                              description: err.message || 'Không thể tải file',
+                              type: 'error'
+                            })
+                          }
+                        }}
+                      >
+                        <Download size={16} />
+                        Tải xuống
+                      </Button>
+                    </HStack>
+                  )}
+
+                  {/* Hiển thị file mới đã chọn */}
+                  {formData.newFile && (
+                    <HStack p={3} bg='green.50' borderRadius='lg' justify='space-between' mb={3}>
+                      <HStack gap={2}>
+                        <FileText size={18} color='green.500' />
+                        <Text fontSize='sm' color='gray.700'>
+                          {formData.newFile.name}
+                        </Text>
+                      </HStack>
+                      <Button size='xs' variant='ghost' color='red.500' onClick={removeNewFile}>
+                        <X size={14} />
+                      </Button>
+                    </HStack>
+                  )}
+
+                  {/* Upload area */}
+                  <Box
+                    w='full'
+                    border='2px dashed'
                     borderColor='orange.200'
-                    _focus={{ borderColor: '#dd7323', boxShadow: '0 0 0 1px #dd7323' }}
-                  />
+                    borderRadius='xl'
+                    p={4}
+                    textAlign='center'
+                    cursor='pointer'
+                    _hover={{ borderColor: '#dd7323', bg: 'orange.50' }}
+                    transition='all 0.2s'
+                    onClick={() => document.getElementById('edit-assignment-file-upload')?.click()}
+                  >
+                    <Upload size={24} color='#dd7323' style={{ margin: '0 auto 8px' }} />
+                    <Text fontSize='sm' color='gray.600' fontWeight='medium'>
+                      {formData.newFile ? 'Chọn file khác' : currentFileKey ? 'Thay đổi file' : 'Chọn file đính kèm'}
+                    </Text>
+                    <Text fontSize='xs' color='gray.400' mt={1}>
+                      PDF, DOC, DOCX, ZIP, RAR, hình ảnh
+                    </Text>
+                    <input
+                      id='edit-assignment-file-upload'
+                      type='file'
+                      hidden
+                      onChange={handleFileChange}
+                      accept='.pdf,.doc,.docx,.zip,.rar,.png,.jpg,.jpeg,.gif,.ppt,.pptx,.xls,.xlsx'
+                    />
+                  </Box>
                 </Field.Root>
 
                 {/* Is Published */}

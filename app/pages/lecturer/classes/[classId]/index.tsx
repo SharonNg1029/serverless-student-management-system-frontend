@@ -488,7 +488,7 @@ export default function LecturerClassDetail() {
             </Tabs.Content>
 
             <Tabs.Content value='students'>
-              <LecturerStudentTab classId={classId || ''} />
+              <LecturerStudentTab classId={classId || ''} teacherId={classInfo?.lecturerId} />
             </Tabs.Content>
           </Tabs.Root>
         </Box>

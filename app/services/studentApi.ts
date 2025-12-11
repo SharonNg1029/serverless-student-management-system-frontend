@@ -1,5 +1,7 @@
 import api from '../utils/axios'
 import { fetchAuthSession } from '@aws-amplify/auth'
+// Re-export file download utilities từ lecturerApi
+export { getDownloadUrl, openFileDownload } from './lecturerApi'
 import type {
   CalendarAssignment,
   StudentEnrolledClassDTO,

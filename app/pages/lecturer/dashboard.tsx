@@ -29,7 +29,9 @@ import {
   ChevronRight,
   ChevronRight as ArrowRight,
   FileText,
-  Users
+  Users,
+  ClipboardCheck,
+  ExternalLink
 } from 'lucide-react'
 import { useAuthStore } from '../../store/authStore'
 import PageHeader from '../../components/ui/PageHeader'
@@ -119,10 +121,34 @@ export default function LecturerDashboard() {
     return Array.isArray(data) ? data : []
   }, [classesData])
 
-  // Parse notifications - API đã trả về array trực tiếp
+  // Parse notifications - filter theo type
+  // - type: "system" → show luôn
+  // - type: "class" → chỉ show nếu GV có classId đó trong danh sách lớp của mình
   const notifications = useMemo(() => {
-    return Array.isArray(notificationsData) ? notificationsData : []
-  }, [notificationsData])
+    const allNotifications = Array.isArray(notificationsData) ? notificationsData : []
+
+    // Lấy danh sách classId của GV
+    const lecturerClassIds = classes.map((c: any) => c.id)
+
+    // Filter notifications
+    return allNotifications.filter((n: any) => {
+      const notificationType = n.type || 'system'
+
+      // System notifications → show luôn
+      if (notificationType === 'system') {
+        return true
+      }
+
+      // Class notifications → chỉ show nếu GV có classId đó
+      if (notificationType === 'class') {
+        const notificationClassId = n.classId || n.class_id
+        return notificationClassId && lecturerClassIds.includes(notificationClassId)
+      }
+
+      // Các type khác → show luôn (fallback)
+      return true
+    })
+  }, [notificationsData, classes])
 
   // Calculate stats
   const unreadCount = notifications.filter((n: any) => !n.is_read && !n.isRead).length
@@ -200,6 +226,63 @@ export default function LecturerDashboard() {
             <StatsCard label='Tổng sinh viên' value={totalStudents} icon={Users} isLoading={statsLoading} />
             <StatsCard label='Bài tập chưa chấm' value='--' icon={FileText} isLoading={statsLoading} />
           </Grid>
+
+          {/* Exam System Card */}
+          <Box px={6} mt={6}>
+            <Card.Root
+              bg='linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+              borderRadius='2xl'
+              shadow='lg'
+              overflow='hidden'
+              position='relative'
+              _hover={{ transform: 'translateY(-2px)', shadow: 'xl' }}
+              transition='all 0.3s'
+              cursor='pointer'
+              onClick={() => window.open('https://c-examlab.vercel.app', '_blank')}
+            >
+              <Box
+                position='absolute'
+                top='-20px'
+                right='-20px'
+                w='120px'
+                h='120px'
+                bg='rgba(255,255,255,0.1)'
+                borderRadius='full'
+              />
+              <Box
+                position='absolute'
+                bottom='-30px'
+                left='-30px'
+                w='100px'
+                h='100px'
+                bg='rgba(255,255,255,0.05)'
+                borderRadius='full'
+              />
+              <Card.Body p={6}>
+                <HStack justify='space-between' align='center'>
+                  <HStack gap={4}>
+                    <Circle size='14' bg='rgba(255,255,255,0.2)'>
+                      <ClipboardCheck size={28} color='white' />
+                    </Circle>
+                    <VStack align='flex-start' gap={1}>
+                      <Heading size='lg' color='white' fontWeight='bold'>
+                        Hệ thống làm bài kiểm tra
+                      </Heading>
+                      <Text color='whiteAlpha.800' fontSize='sm'>
+                        Quản lý và tạo đề thi trắc nghiệm trực tuyến - C-ExamLab
+                      </Text>
+                    </VStack>
+                  </HStack>
+                  <HStack gap={2} color='white'>
+                    <Text fontSize='sm' fontWeight='medium'>
+                      Truy cập ngay
+                    </Text>
+                    <ExternalLink size={20} />
+                  </HStack>
+                </HStack>
+              </Card.Body>
+            </Card.Root>
+          </Box>
         </Box>
 
         {/* Main Content - 2 Columns */}

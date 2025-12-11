@@ -181,13 +181,53 @@ api.interceptors.response.use(
       console.error('Server error, please try again later')
     }
 
-    // Hiển thị thông báo lỗi
-    toaster.create({
-      title: 'Lỗi',
-      description: error.message || 'An error occurred',
-      type: 'error',
-      duration: 3000
+    // Chuyển đổi lỗi kỹ thuật thành thông báo thân thiện
+    // Không hiển thị status code hay error message từ BE
+    const status = error.response?.status
+    let friendlyMessage = 'Đã xảy ra lỗi. Vui lòng thử lại.'
+
+    if (!error.response) {
+      // Network error
+      friendlyMessage = 'Lỗi kết nối mạng. Vui lòng kiểm tra kết nối.'
+    } else if (status === 400) {
+      friendlyMessage = 'Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.'
+    } else if (status === 401) {
+      friendlyMessage = 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+    } else if (status === 403) {
+      // Đã xử lý ở trên với WAF message
+      friendlyMessage = 'Bạn không có quyền thực hiện thao tác này.'
+    } else if (status === 404) {
+      friendlyMessage = 'Không tìm thấy dữ liệu yêu cầu.'
+    } else if (status === 405) {
+      friendlyMessage = 'Thao tác không được hỗ trợ.'
+    } else if (status === 409) {
+      friendlyMessage = 'Dữ liệu bị xung đột. Vui lòng thử lại.'
+    } else if (status === 422) {
+      friendlyMessage = 'Dữ liệu không hợp lệ. Vui lòng kiểm tra lại.'
+    } else if (status === 429) {
+      // Đã xử lý ở trên với rate limit message
+      friendlyMessage = 'Quá nhiều yêu cầu. Vui lòng thử lại sau.'
+    } else if (status && status >= 500) {
+      friendlyMessage = 'Lỗi máy chủ. Vui lòng thử lại sau.'
+    }
+
+    // Log chi tiết cho debugging (không hiển thị cho user)
+    console.error('API Error:', {
+      status,
+      url: error.config?.url,
+      method: error.config?.method,
+      message: error.message
     })
+
+    // Chỉ hiển thị toast nếu chưa được xử lý ở trên (403, 429)
+    if (status !== 403 && status !== 429) {
+      toaster.create({
+        title: 'Lỗi',
+        description: friendlyMessage,
+        type: 'error',
+        duration: 3000
+      })
+    }
 
     return Promise.reject(error)
   }

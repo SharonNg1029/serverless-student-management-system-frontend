@@ -1,5 +1,6 @@
 import api from '../utils/axios'
 import { fetchAuthSession } from '@aws-amplify/auth'
+import { formatApiError } from '../utils/errorMessages'
 import type {
   ClassDTO,
   CreateClassRequest,
@@ -43,6 +44,64 @@ const ASSIGNMENT_WEIGHTS: Record<AssignmentType, number> = {
   project: 0.3,
   midterm: 0.25,
   final: 0.25
+}
+
+// ============================================
+// FILE UPLOAD/DOWNLOAD UTILITIES
+// ============================================
+
+/**
+ * GET /api/upload/download-url?fileKey={fileKey}
+ * Lấy presigned URL để download file từ S3
+ *
+ * API này yêu cầu header:
+ * - user-idToken: <idToken>
+ */
+export const getDownloadUrl = async (fileKey: string): Promise<string> => {
+  if (!fileKey || fileKey === 'null' || fileKey === 'string' || fileKey.trim() === '') {
+    throw new Error('File key không hợp lệ')
+  }
+
+  // Lấy idToken từ Cognito session
+  const session = await fetchAuthSession()
+  const idToken = session.tokens?.idToken?.toString()
+
+  if (!idToken) {
+    throw new Error('Không tìm thấy token xác thực')
+  }
+
+  const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+  const response = await fetch(`${baseUrl}/api/upload/download-url?fileKey=${encodeURIComponent(fileKey)}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${idToken}`,
+      'user-idToken': idToken
+    }
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}))
+    throw new Error(errorData.message || 'Lỗi khi lấy link download')
+  }
+
+  const data = await response.json()
+  // BE có thể trả về { downloadUrl: "..." } hoặc { url: "..." } hoặc trực tiếp string
+  return data.downloadUrl || data.url || data.data?.downloadUrl || data.data?.url || data
+}
+
+/**
+ * Helper function để mở file download
+ * Lấy presigned URL rồi mở trong tab mới
+ */
+export const openFileDownload = async (fileKey: string): Promise<void> => {
+  try {
+    const downloadUrl = await getDownloadUrl(fileKey)
+    window.open(downloadUrl, '_blank')
+  } catch (err: any) {
+    console.error('Failed to get download URL:', err)
+    throw err
+  }
 }
 
 // ============================================
@@ -538,7 +597,7 @@ export const lecturerAssignmentApi = {
   },
 
   /**
-   * POST /api/lecturer/assignments/{assignment_id}/update-grades?classId={classId}
+   * PUT /api/lecturer/assignments/{assignment_id}/update-grades?classId={classId}
    * Chấm điểm hoặc sửa điểm (Hợp nhất)
    * Body: { assignmentId, studentId, score, feedback }
    */
@@ -552,7 +611,7 @@ export const lecturerAssignmentApi = {
       feedback?: string
     }
   ) => {
-    const response = await api.post(`/api/lecturer/assignments/${assignmentId}/update-grades`, data, {
+    const response = await api.put(`/api/lecturer/assignments/${assignmentId}/update-grades`, data, {
       params: { classId }
     })
     return response.data
@@ -562,7 +621,7 @@ export const lecturerAssignmentApi = {
    * Grade a single student (convenience method)
    */
   gradeStudent: async (assignmentId: string, classId: string, studentId: string, score: number, feedback?: string) => {
-    const response = await api.post(
+    const response = await api.put(
       `/api/lecturer/assignments/${assignmentId}/update-grades`,
       {
         assignmentId,
@@ -597,10 +656,18 @@ export const lecturerPostApi = {
    *
    * Sử dụng S3 Presigned URL flow cho file attachment:
    * 1. Upload file lên S3 trước
-   * Dùng axios để có headers tự động (Authorization + user-idToken)
+   * API này yêu cầu cả Authorization và user-idToken đều dùng idToken
    */
   createPost: async (classId: string, data: CreatePostRequest) => {
-    // Upload file to S3 first if any (dùng axios)
+    // Lấy idToken từ Cognito session
+    const session = await fetchAuthSession()
+    const idToken = session.tokens?.idToken?.toString()
+
+    if (!idToken) {
+      throw new Error('Không tìm thấy token xác thực')
+    }
+
+    // Upload file to S3 first if any
     let fileKey: string | undefined
     if (data.attachment) {
       // Step 1: Get presigned URL (dùng axios)
@@ -622,16 +689,32 @@ export const lecturerPostApi = {
       fileKey = presignedData.fileKey
     }
 
-    // Step 3: Call API with fileKey (dùng axios)
-    const response = await api.post(`/api/lecturer/classes/${classId}/posts`, {
-      title: data.title,
-      content: data.content,
-      classId: classId,
-      pinned: data.is_pinned ?? false,
-      fileKey: fileKey
+    // Step 3: Call API với headers đặc biệt (cả Authorization và user-idToken đều dùng idToken)
+    // Swagger yêu cầu: { title, content, attachmentUrl, classId, pinned }
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const response = await fetch(`${baseUrl}/api/lecturer/classes/${classId}/posts`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+        'user-idToken': idToken
+      },
+      body: JSON.stringify({
+        title: data.title,
+        content: data.content,
+        classId: classId,
+        pinned: data.is_pinned ?? false,
+        attachmentUrl: fileKey || ''
+      })
     })
 
-    return response.data
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      console.error('Create post error:', errorData)
+      throw new Error(formatApiError(errorData, 'post', 'create'))
+    }
+
+    return response.json()
   },
 
   /**
@@ -715,7 +798,9 @@ export const lecturerPostApi = {
     }
 
     const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
-    const response = await fetch(`${baseUrl}/api/lecturer/posts/${postId}/comments`, {
+    // URL encode postId vì có thể chứa ký tự đặc biệt (timestamp format)
+    const encodedPostId = encodeURIComponent(postId)
+    const response = await fetch(`${baseUrl}/api/lecturer/posts/${encodedPostId}/comments`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -732,7 +817,8 @@ export const lecturerPostApi = {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.message || 'Lỗi khi tạo bình luận')
+      console.error('Create comment error:', errorData)
+      throw new Error(formatApiError(errorData, 'comment', 'create'))
     }
 
     const result = await response.json()
@@ -757,7 +843,9 @@ export const lecturerPostApi = {
     }
 
     const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
-    const response = await fetch(`${baseUrl}/api/lecturer/posts/${postId}/comments`, {
+    // URL encode postId vì có thể chứa ký tự đặc biệt (timestamp format)
+    const encodedPostId = encodeURIComponent(postId)
+    const response = await fetch(`${baseUrl}/api/lecturer/posts/${encodedPostId}/comments`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -768,7 +856,8 @@ export const lecturerPostApi = {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData.message || 'Lỗi khi lấy bình luận')
+      console.error('Get comments error:', errorData)
+      throw new Error(formatApiError(errorData, 'comment', 'fetch'))
     }
 
     const data = await response.json()

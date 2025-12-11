@@ -11,6 +11,10 @@ export default [
     route('auth/login', './pages/auth/login.tsx', { id: 'auth-login' }),
     route('auth/reset-password', './pages/auth/reset-password.tsx'),
 
+    // Index redirects (handles /admin, /lecturer, /student without specific page)
+    route('admin', './pages/not-found.tsx', { id: 'admin-index' }),
+    route('student', './pages/not-found.tsx', { id: 'student-index' }),
+
     // Admin routes with AdminLayout
     layout('./components/layout/AdminLayout.tsx', [
       route('admin/dashboard', './pages/admin/dashboard.tsx'),
@@ -37,6 +41,7 @@ export default [
       route('lecturer', './pages/lecturer/index.tsx'),
       route('lecturer/my-courses', './pages/lecturer/my-courses.tsx'),
       route('lecturer/notifications-send', './pages/lecturer/notifications-send.tsx'),
+      route('lecturer/notifications', './pages/lecturer/notifications.tsx'),
       route('lecturer/classes/:classId', './pages/lecturer/classes/[classId]/index.tsx'),
       route(
         'lecturer/classes/:classId/assignments/:assignmentId',
@@ -50,6 +55,9 @@ export default [
       route('student/search', './pages/student/search-results.tsx'),
       route('student/course-details/:classId', './pages/student/course-details.tsx'),
       route('student/course-details/:classId/assignment/:assignmentId', './pages/student/assignment-detail.tsx')
-    ])
+    ]),
+
+    // Catch-all route for 404 - must be last
+    route('*', './pages/not-found.tsx', { id: 'not-found' })
   ])
 ] satisfies RouteConfig

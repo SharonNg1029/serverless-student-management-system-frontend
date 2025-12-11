@@ -21,21 +21,14 @@ export default function SearchResultsPage() {
   // Subject detail modal
   const [selectedSubject, setSelectedSubject] = useState<SearchResult | null>(null)
 
-  // Fetch cả 2 loại cùng lúc
+  // Fetch cả 2 loại cùng lúc - nếu keyword rỗng thì load tất cả
   const fetchResults = useCallback(async () => {
-    if (!keyword.trim()) {
-      setClassResults([])
-      setSubjectResults([])
-      setLoading(false)
-      return
-    }
-
     setLoading(true)
     try {
-      // Gọi cả 2 API cùng lúc
+      // Gọi cả 2 API cùng lúc - keyword rỗng sẽ load tất cả
       const [classesResponse, subjectsResponse] = await Promise.all([
-        search({ type: 'classes', keyword }),
-        search({ type: 'subjects', keyword })
+        search({ type: 'classes', keyword: keyword.trim() || '' }),
+        search({ type: 'subjects', keyword: keyword.trim() || '' })
       ])
 
       console.log('Classes results:', classesResponse)
@@ -139,7 +132,7 @@ export default function SearchResultsPage() {
         {/* Header */}
         <PageHeader
           icon={Search}
-          title={`Kết quả tìm kiếm: "${keyword}"`}
+          title={keyword ? `Kết quả tìm kiếm: "${keyword}"` : 'Khám phá lớp học'}
           subtitle={`Tìm thấy ${totalResults} kết quả`}
         />
 
@@ -186,7 +179,9 @@ export default function SearchResultsPage() {
                   Không tìm thấy kết quả
                 </Text>
                 <Text color='gray.500' textAlign='center'>
-                  Không có {activeType === 'classes' ? 'lớp học' : 'môn học'} nào phù hợp với từ khóa "{keyword}"
+                  {keyword
+                    ? `Không có ${activeType === 'classes' ? 'lớp học' : 'môn học'} nào phù hợp với từ khóa "${keyword}"`
+                    : `Chưa có ${activeType === 'classes' ? 'lớp học' : 'môn học'} nào trong hệ thống`}
                 </Text>
               </VStack>
             </Card.Root>

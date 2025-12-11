@@ -10,13 +10,6 @@ interface ClassDTO {
   status?: number
 }
 
-// User/Lecturer interface
-interface UserDTO {
-  id: string
-  name?: string
-  fullName?: string
-}
-
 const SendNotificationPage: React.FC = () => {
   // Type: 'system' hoặc 'class'
   const [notificationType, setNotificationType] = useState<'system' | 'class'>('system')
@@ -26,17 +19,13 @@ const SendNotificationPage: React.FC = () => {
 
   // For class type
   const [classId, setClassId] = useState('')
-  const [userId, setUserId] = useState('')
   const [classes, setClasses] = useState<ClassDTO[]>([])
-  const [lecturers, setLecturers] = useState<UserDTO[]>([])
   const [loadingClasses, setLoadingClasses] = useState(false)
-  const [loadingLecturers, setLoadingLecturers] = useState(false)
 
   // Load classes khi chọn type = class
   useEffect(() => {
     if (notificationType === 'class') {
       fetchClasses()
-      fetchLecturers()
     }
   }, [notificationType])
 
@@ -77,35 +66,6 @@ const SendNotificationPage: React.FC = () => {
     }
   }
 
-  const fetchLecturers = async () => {
-    try {
-      setLoadingLecturers(true)
-      const response = await api.get('/api/admin/users', { params: { role_id: 2 } })
-      console.log('=== LECTURERS API RESPONSE ===', response.data)
-
-      let lecturerData: any[] = []
-      if (Array.isArray(response.data)) {
-        lecturerData = response.data
-      } else if (response.data?.results) {
-        lecturerData = response.data.results
-      } else if (response.data?.data) {
-        lecturerData = response.data.data
-      }
-
-      const transformedLecturers: UserDTO[] = lecturerData.map((l: any) => ({
-        id: l.id || l.codeUser,
-        name: l.name || l.fullName || 'Unknown',
-        fullName: l.fullName || l.name || 'Unknown'
-      }))
-
-      setLecturers(transformedLecturers)
-    } catch (error) {
-      console.error('Error fetching lecturers:', error)
-    } finally {
-      setLoadingLecturers(false)
-    }
-  }
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -129,14 +89,6 @@ const SendNotificationPage: React.FC = () => {
         })
         return
       }
-      if (!userId) {
-        toaster.create({
-          title: 'Lỗi',
-          description: 'Vui lòng chọn giảng viên gửi thông báo!',
-          type: 'error'
-        })
-        return
-      }
     }
 
     setIsLoading(true)
@@ -144,13 +96,13 @@ const SendNotificationPage: React.FC = () => {
       // Prepare payload theo API spec
       // API yêu cầu: { userId, title, content, type, classId }
       const payload: {
-        userId: string
+        userId: string | null
         title: string
         content: string
         type: string
         classId?: string
       } = {
-        userId: notificationType === 'class' ? userId : 'ADMIN', // System notification dùng userId = 'ADMIN'
+        userId: null, // Cả system và class notification đều gửi userId = null
         title: title.trim(),
         content: content.trim(),
         type: notificationType
@@ -179,7 +131,6 @@ const SendNotificationPage: React.FC = () => {
       setTitle('')
       setContent('')
       setClassId('')
-      setUserId('')
     } catch (error: any) {
       console.error('Error sending notification:', error)
       toaster.create({
@@ -194,7 +145,6 @@ const SendNotificationPage: React.FC = () => {
 
   // Get selected class name for preview
   const selectedClassName = classes.find((c) => c.id === classId)?.name || ''
-  const selectedLecturerName = lecturers.find((l) => l.id === userId)?.name || ''
 
   return (
     <div className='max-w-4xl mx-auto'>
@@ -219,7 +169,6 @@ const SendNotificationPage: React.FC = () => {
                   onClick={() => {
                     setNotificationType('system')
                     setClassId('')
-                    setUserId('')
                   }}
                   className={`flex flex-col items-center justify-center p-4 rounded-xl border transition-all ${
                     notificationType === 'system'
@@ -276,33 +225,6 @@ const SendNotificationPage: React.FC = () => {
                     </p>
                   )}
                 </div>
-
-                {/* User (Lecturer) Selection */}
-                <div>
-                  <label className='block text-sm font-bold text-slate-700 mb-2'>
-                    Giảng viên gửi thông báo <span className='text-red-500'>*</span>
-                  </label>
-                  <select
-                    required
-                    disabled={loadingLecturers}
-                    value={userId}
-                    onChange={(e) => setUserId(e.target.value)}
-                    className='w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed'
-                  >
-                    <option value=''>-- Chọn giảng viên --</option>
-                    {lecturers.map((lecturer) => (
-                      <option key={lecturer.id} value={lecturer.id}>
-                        {lecturer.id} - {lecturer.name || lecturer.fullName}
-                      </option>
-                    ))}
-                  </select>
-                  {loadingLecturers && (
-                    <p className='text-xs text-slate-500 mt-1 flex items-center gap-1'>
-                      <Loader2 size={12} className='animate-spin' />
-                      Đang tải giảng viên...
-                    </p>
-                  )}
-                </div>
               </>
             )}
 
@@ -340,7 +262,6 @@ const SendNotificationPage: React.FC = () => {
                   setTitle('')
                   setContent('')
                   setClassId('')
-                  setUserId('')
                 }}
                 className='px-6 py-2.5 text-slate-600 font-medium hover:bg-slate-50 rounded-xl transition-colors'
               >
@@ -397,11 +318,9 @@ const SendNotificationPage: React.FC = () => {
 
             <div className='mt-4 pt-4 border-t border-slate-100 flex items-center gap-2'>
               <div className='w-6 h-6 rounded-full bg-[#293548] flex items-center justify-center text-white text-[10px] font-bold'>
-                {notificationType === 'class' && selectedLecturerName ? selectedLecturerName.charAt(0) : 'A'}
+                A
               </div>
-              <span className='text-xs text-slate-500 font-medium'>
-                Gửi bởi {notificationType === 'class' && selectedLecturerName ? selectedLecturerName : 'Ban Đào tạo'}
-              </span>
+              <span className='text-xs text-slate-500 font-medium'>Gửi bởi Ban Đào tạo</span>
             </div>
           </div>
 

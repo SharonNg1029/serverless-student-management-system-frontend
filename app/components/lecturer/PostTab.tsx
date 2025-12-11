@@ -8,7 +8,8 @@ import ReactMarkdown from 'react-markdown'
 import StatsCard from '../ui/StatsCard'
 import EmptyState from '../ui/EmptyState'
 import CreatePostModal, { type PostFormData } from './CreatePostModal'
-import { lecturerPostApi } from '../../services/lecturerApi'
+import { lecturerPostApi, openFileDownload } from '../../services/lecturerApi'
+import { useAuthStore } from '../../store/authStore'
 import type { PostDTO } from '../../types'
 
 interface PostTabProps {
@@ -166,6 +167,10 @@ interface CommentDTO {
   createdAt?: string
   attachment_url?: string
   attachmentUrl?: string
+  // BE trả về senderId thay vì author_id
+  senderId?: string
+  studentName?: string
+  avatar?: string
 }
 
 // Post Card Component
@@ -183,6 +188,17 @@ function PostCard({ post, classId, onDeleted }: PostCardProps) {
   const [loadingComments, setLoadingComments] = useState(false)
   const [newComment, setNewComment] = useState('')
   const [submittingComment, setSubmittingComment] = useState(false)
+
+  // Lấy thông tin user hiện tại để kiểm tra quyền xóa comment
+  // user.username chứa codeUser (ví dụ: "GV2512092023") - đây là ID dùng để so sánh với senderId
+  const { user } = useAuthStore()
+  // Ưu tiên username (codeUser) vì đây là format giống senderId từ BE
+  const currentUserId = user?.username || user?.id || ''
+
+  // Debug log để kiểm tra user info
+  console.log('=== USER INFO DEBUG ===')
+  console.log('User object:', user)
+  console.log('Current User ID (username/codeUser):', currentUserId)
 
   // Get post ID - BE có thể trả về id, postId, hoặc post_id
   const postId = String((post as any).id || (post as any).postId || (post as any).post_id || '')
@@ -356,8 +372,8 @@ function PostCard({ post, classId, onDeleted }: PostCardProps) {
           </Button>
         )}
 
-        {/* Attachment */}
-        {post.attachment_url && (
+        {/* Attachment - sử dụng openFileDownload để lấy presigned URL */}
+        {post.attachment_url && post.attachment_url !== 'null' && post.attachment_url !== 'string' && (
           <HStack
             p={3}
             bg='orange.50'
@@ -377,7 +393,17 @@ function PostCard({ post, classId, onDeleted }: PostCardProps) {
               size='sm'
               variant='ghost'
               color='#dd7323'
-              onClick={() => window.open(post.attachment_url, '_blank')}
+              onClick={async () => {
+                try {
+                  await openFileDownload(post.attachment_url!)
+                } catch (err: any) {
+                  toaster.create({
+                    title: 'Lỗi',
+                    description: err.message || 'Không thể tải file',
+                    type: 'error'
+                  })
+                }
+              }}
             >
               <Download size={16} />
               Tải xuống
@@ -390,7 +416,7 @@ function PostCard({ post, classId, onDeleted }: PostCardProps) {
           <HStack gap={4}>
             <Button variant='ghost' size='sm' color='gray.600' _hover={{ bg: 'red.50', color: 'red.500' }}>
               <Heart size={18} />
-              <Text ml={1}>{post.like_count}</Text>
+              <Text ml={1}>{(post as any).like_count ?? (post as any).likeCount ?? 0}</Text>
             </Button>
             <Button
               variant='ghost'
@@ -400,7 +426,7 @@ function PostCard({ post, classId, onDeleted }: PostCardProps) {
               onClick={handleToggleComments}
             >
               <MessageSquare size={18} />
-              <Text ml={1}>{post.comment_count}</Text>
+              <Text ml={1}>{(post as any).comment_count ?? (post as any).commentCount ?? 0}</Text>
             </Button>
           </HStack>
           <Button
@@ -462,59 +488,142 @@ function PostCard({ post, classId, onDeleted }: PostCardProps) {
             ) : (
               <VStack gap={3} align='stretch'>
                 {comments.map((comment) => {
+                  // Debug: log toàn bộ comment object để xem BE trả về gì
+                  console.log('=== FULL COMMENT OBJECT ===')
+                  console.log(JSON.stringify(comment, null, 2))
+
                   const commentId = String(
                     (comment as any).id || (comment as any).commentId || (comment as any).comment_id || ''
                   )
+                  // Lấy senderId từ API response (BE trả về senderId: "GV2512092023" hoặc "EN2512092037")
+                  const senderId =
+                    (comment as any).senderId ||
+                    (comment as any).sender_id ||
+                    (comment as any).userId ||
+                    (comment as any).user_id ||
+                    (comment as any).authorId ||
+                    (comment as any).author_id ||
+                    ''
+                  // Lấy tên hiển thị: sender_name > studentName > senderId > fallback
+                  const senderName =
+                    (comment as any).sender_name ||
+                    (comment as any).senderName ||
+                    comment.author_name ||
+                    comment.authorName ||
+                    ''
+                  const studentName = (comment as any).studentName
+                  // Nếu studentName là null hoặc "string" (placeholder) thì không dùng
+                  const isValidStudentName =
+                    studentName && studentName !== null && studentName !== 'null' && studentName !== 'string'
+                  // Hiển thị: senderName > studentName (nếu hợp lệ) > senderId > fallback
+                  const displayName = senderName || (isValidStudentName ? studentName : '') || senderId || 'Người dùng'
+                  // Kiểm tra xem comment có phải của user hiện tại không
+                  // So sánh senderId với currentUserId (case-insensitive)
+                  const isOwnComment = senderId && currentUserId && senderId === currentUserId
+
+                  // Debug log để kiểm tra so sánh
+                  console.log('=== COMMENT OWNER CHECK ===')
+                  console.log('Comment senderId:', senderId)
+                  console.log('Current User ID:', currentUserId)
+                  console.log('Is own comment:', isOwnComment)
+                  // Lấy avatar
+                  const avatarUrl = comment.avatar || comment.author_avatar || comment.authorAvatar
+                  // Lấy thời gian
+                  const createdTime = comment.created_at || comment.createdAt || ''
+                  // Lấy attachment URL - chỉ hiển thị nếu có giá trị thực (không phải null, undefined, "string", "")
+                  const attachmentUrl = comment.attachment_url || comment.attachmentUrl
+                  const hasAttachment =
+                    attachmentUrl &&
+                    attachmentUrl !== 'null' &&
+                    attachmentUrl !== 'string' &&
+                    attachmentUrl.trim() !== ''
+
                   return (
-                    <HStack key={commentId} gap={3} align='flex-start' p={3} bg='gray.50' borderRadius='lg'>
-                      <Avatar.Root size='sm'>
-                        <Avatar.Image src={comment.author_avatar || comment.authorAvatar} />
-                        <Avatar.Fallback name={comment.author_name || comment.authorName || 'User'} />
-                      </Avatar.Root>
-                      <VStack align='flex-start' gap={1} flex={1}>
-                        <HStack gap={2} justify='space-between' w='full'>
-                          <HStack gap={2}>
-                            <Text fontSize='sm' fontWeight='semibold' color='gray.800'>
-                              {comment.author_name || comment.authorName || 'Người dùng'}
-                            </Text>
-                            <Text fontSize='xs' color='gray.500'>
-                              {getRelativeTime(comment.created_at || comment.createdAt || '')}
-                            </Text>
+                    <Box key={commentId} p={3} bg='gray.50' borderRadius='lg'>
+                      <HStack gap={3} align='flex-start'>
+                        <Avatar.Root size='sm'>
+                          <Avatar.Image src={avatarUrl} />
+                          <Avatar.Fallback name={displayName} />
+                        </Avatar.Root>
+                        <VStack align='flex-start' gap={1} flex={1}>
+                          <HStack gap={2} justify='space-between' w='full'>
+                            <HStack gap={2}>
+                              <Text fontSize='sm' fontWeight='semibold' color='gray.800'>
+                                {displayName}
+                              </Text>
+                              {createdTime && (
+                                <Text fontSize='xs' color='gray.500'>
+                                  {getRelativeTime(createdTime)}
+                                </Text>
+                              )}
+                            </HStack>
+                            {/* Chỉ hiển thị nút xóa nếu comment là của user hiện tại */}
+                            {isOwnComment && (
+                              <Button
+                                size='xs'
+                                variant='ghost'
+                                color='red.500'
+                                _hover={{ bg: 'red.50' }}
+                                onClick={async () => {
+                                  if (!confirm('Bạn có chắc muốn xóa bình luận này?')) return
+                                  try {
+                                    await lecturerPostApi.deleteComment(commentId, postId)
+                                    toaster.create({
+                                      title: 'Đã xóa bình luận',
+                                      type: 'success'
+                                    })
+                                    fetchComments()
+                                  } catch (err: any) {
+                                    console.error('Failed to delete comment:', err)
+                                    toaster.create({
+                                      title: 'Lỗi',
+                                      description: err.message || 'Không thể xóa bình luận',
+                                      type: 'error'
+                                    })
+                                  }
+                                }}
+                                p={1}
+                                title='Xóa bình luận'
+                              >
+                                <Trash2 size={14} />
+                              </Button>
+                            )}
                           </HStack>
-                          <Button
-                            size='xs'
-                            variant='ghost'
-                            color='red.500'
-                            _hover={{ bg: 'red.50' }}
-                            onClick={async () => {
-                              if (!confirm('Bạn có chắc muốn xóa bình luận này?')) return
-                              try {
-                                await lecturerPostApi.deleteComment(commentId, postId)
-                                toaster.create({
-                                  title: 'Đã xóa bình luận',
-                                  type: 'success'
-                                })
-                                fetchComments()
-                              } catch (err: any) {
-                                console.error('Failed to delete comment:', err)
-                                toaster.create({
-                                  title: 'Lỗi',
-                                  description: err.message || 'Không thể xóa bình luận',
-                                  type: 'error'
-                                })
-                              }
-                            }}
-                            p={1}
-                            title='Xóa bình luận'
-                          >
-                            <Trash2 size={14} />
-                          </Button>
-                        </HStack>
-                        <Text fontSize='sm' color='gray.700'>
-                          {comment.content}
-                        </Text>
-                      </VStack>
-                    </HStack>
+                          <Text fontSize='sm' color='gray.700'>
+                            {comment.content}
+                          </Text>
+                          {/* Attachment - sử dụng openFileDownload để lấy presigned URL */}
+                          {hasAttachment && (
+                            <HStack
+                              mt={2}
+                              p={2}
+                              bg='orange.50'
+                              borderRadius='md'
+                              gap={2}
+                              _hover={{ bg: 'orange.100' }}
+                              cursor='pointer'
+                              onClick={async () => {
+                                try {
+                                  await openFileDownload(attachmentUrl)
+                                } catch (err: any) {
+                                  toaster.create({
+                                    title: 'Lỗi',
+                                    description: err.message || 'Không thể tải file',
+                                    type: 'error'
+                                  })
+                                }
+                              }}
+                            >
+                              <File size={14} color='#dd7323' />
+                              <Text fontSize='xs' color='#dd7323'>
+                                File đính kèm
+                              </Text>
+                              <Download size={12} color='#dd7323' />
+                            </HStack>
+                          )}
+                        </VStack>
+                      </HStack>
+                    </Box>
                   )
                 })}
               </VStack>

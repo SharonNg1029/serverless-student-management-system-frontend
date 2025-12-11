@@ -8,7 +8,6 @@ import {
   HStack,
   Button,
   Input,
-  Textarea,
   NativeSelect,
   Field,
   Dialog,
@@ -229,19 +228,6 @@ export default function CreateAssignmentModal({ isOpen, onClose, onSubmit }: Cre
                     _focus={{ borderColor: '#dd7323', boxShadow: '0 0 0 1px #dd7323' }}
                   />
                   {errors.deadline && <Field.ErrorText>{errors.deadline}</Field.ErrorText>}
-                </Field.Root>
-
-                {/* Description */}
-                <Field.Root>
-                  <Field.Label fontWeight='medium'>Mô tả</Field.Label>
-                  <Textarea
-                    placeholder='Nhập mô tả bài tập...'
-                    value={formData.description}
-                    onChange={(e) => handleChange('description', e.target.value)}
-                    rows={4}
-                    borderColor='orange.200'
-                    _focus={{ borderColor: '#dd7323', boxShadow: '0 0 0 1px #dd7323' }}
-                  />
                 </Field.Root>
 
                 {/* File Upload - Full Width */}

@@ -8,6 +8,7 @@ import api from '../../../utils/axios'
 import { toaster } from '../../../components/ui/toaster'
 import { createListCollection } from '@chakra-ui/react'
 import { SelectRoot, SelectTrigger, SelectValueText, SelectContent, SelectItem } from '../../../components/ui/select'
+import { Pagination, usePagination } from '../../../components/ui/pagination'
 
 // Extended type for display with additional fields
 type UserDisplay = Omit<UserEntity, 'id'> & {
@@ -43,6 +44,10 @@ const UsersList: React.FC = () => {
 
   // Debounced keyword for API calls
   const [debouncedKeyword, setDebouncedKeyword] = useState<string>('')
+
+  // Pagination
+  const { currentPage, setCurrentPage, pageSize, setPageSize, totalItems, totalPages, paginatedData } =
+    usePagination(users)
 
   // Debounce keyword input (wait 500ms after user stops typing)
   useEffect(() => {
@@ -387,15 +392,27 @@ const UsersList: React.FC = () => {
           <p className='text-slate-600'>Đang tải danh sách người dùng...</p>
         </div>
       ) : (
-        <TableList
-          title='Quản lý Người dùng'
-          subtitle='Danh sách tài khoản (Student, Lecturer) trong hệ thống.'
-          data={users}
-          columns={columns}
-          onAdd={() => navigate('/admin/users-management/create')}
-          onDelete={handleToggleUserStatus}
-          deleteLabel={getDeleteLabel}
-        />
+        <>
+          <TableList
+            title='Quản lý Người dùng'
+            subtitle='Danh sách tài khoản (Student, Lecturer) trong hệ thống.'
+            data={paginatedData}
+            columns={columns}
+            onAdd={() => navigate('/admin/users-management/create')}
+            onDelete={handleToggleUserStatus}
+            deleteLabel={getDeleteLabel}
+          />
+          <div className='bg-white rounded-lg shadow-sm border border-slate-200 mt-[-1rem]'>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
+          </div>
+        </>
       )}
     </div>
   )

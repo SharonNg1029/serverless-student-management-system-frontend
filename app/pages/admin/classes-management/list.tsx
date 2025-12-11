@@ -6,6 +6,7 @@ import api from '../../../utils/axios'
 import { toaster } from '../../../components/ui/toaster'
 import { createListCollection } from '@chakra-ui/react'
 import { SelectRoot, SelectTrigger, SelectValueText, SelectContent, SelectItem } from '../../../components/ui/select'
+import { Pagination, usePagination } from '../../../components/ui/pagination'
 
 // ClassDTO from backend - matches actual API response
 interface ClassDTO {
@@ -175,6 +176,10 @@ const ClassesList: React.FC = () => {
 
     setClasses(filtered)
   }, [keyword, teacherId, allClasses])
+
+  // Pagination
+  const { currentPage, setCurrentPage, pageSize, setPageSize, totalItems, totalPages, paginatedData } =
+    usePagination(classes)
 
   // Handle clear filters
   const handleClearFilters = () => {
@@ -399,17 +404,28 @@ const ClassesList: React.FC = () => {
           <p className='text-slate-600'>Đang tải danh sách lớp học...</p>
         </div>
       ) : (
-        <TableList
-          title='Quản lý Lớp học'
-          subtitle='Danh sách và thông tin các lớp học.'
-          data={classes}
-          columns={columns}
-          onAdd={() => navigate('/admin/classes-management/create', { state: { lecturers } })}
-          onEdit={handleEditClass}
-          onDelete={handleDeactivateClass}
-          deleteLabel='Đóng lớp'
-          shouldShowDelete={(classItem) => classItem.status === 1}
-        />
+        <>
+          <TableList
+            title='Quản lý Lớp học'
+            subtitle='Danh sách và thông tin các lớp học.'
+            data={paginatedData}
+            columns={columns}
+            onAdd={() => navigate('/admin/classes-management/create', { state: { lecturers } })}
+            onEdit={handleEditClass}
+            onDelete={handleDeactivateClass}
+            deleteLabel='Đóng lớp'
+          />
+          <div className='bg-white rounded-lg shadow-sm border border-slate-200 mt-[-1rem]'>
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={totalItems}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+              onPageSizeChange={setPageSize}
+            />
+          </div>
+        </>
       )}
     </div>
   )

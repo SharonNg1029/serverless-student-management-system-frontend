@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router'
 import { Save, ArrowLeft, BookOpen, Key, Calendar, Loader2 } from 'lucide-react'
+import { createListCollection } from '@chakra-ui/react'
 import api from '../../../utils/axios'
 import { toaster } from '../../../components/ui/toaster'
+import { SelectRoot, SelectTrigger, SelectContent, SelectItem, SelectValueText } from '../../../components/ui/select'
 
 // Lecturer interface from API
 interface LecturerDTO {
@@ -226,20 +228,36 @@ const CreateClass: React.FC = () => {
               <label className='block text-sm font-bold text-slate-700 mb-2'>
                 Học phần <span className='text-red-500'>*</span>
               </label>
-              <select
-                required
+              <SelectRoot
+                collection={createListCollection({
+                  items: subjects.map((subject) => ({
+                    value: subject.id,
+                    label: `${subject.displayId || subject.id} - ${subject.name}`
+                  }))
+                })}
+                value={formData.subjectId ? [formData.subjectId] : []}
+                onValueChange={(e) => setFormData({ ...formData, subjectId: e.value[0] || '' })}
                 disabled={loadingSubjects}
-                className='w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed'
-                value={formData.subjectId}
-                onChange={(e) => setFormData({ ...formData, subjectId: e.target.value })}
+                size='sm'
               >
-                <option value=''>-- Chọn học phần --</option>
-                {subjects.map((subject) => (
-                  <option key={subject.id} value={subject.id}>
-                    {subject.displayId || subject.id} - {subject.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  className='w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all bg-white h-11 flex items-center'
+                  clearable={!!formData.subjectId}
+                  loading={loadingSubjects}
+                >
+                  <SelectValueText placeholder='-- Chọn học phần --' className='flex items-center' />
+                </SelectTrigger>
+                <SelectContent>
+                  {subjects.map((subject) => (
+                    <SelectItem
+                      key={subject.id}
+                      item={{ value: subject.id, label: `${subject.displayId || subject.id} - ${subject.name}` }}
+                    >
+                      {subject.displayId || subject.id} - {subject.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </SelectRoot>
               {loadingSubjects && (
                 <p className='text-xs text-slate-500 mt-1 flex items-center gap-1'>
                   <Loader2 size={12} className='animate-spin' />
@@ -251,15 +269,27 @@ const CreateClass: React.FC = () => {
             {/* Học kỳ */}
             <div>
               <label className='block text-sm font-bold text-slate-700 mb-2'>Học kỳ</label>
-              <select
-                className='w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all'
-                value={formData.semester}
-                onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
+              <SelectRoot
+                collection={createListCollection({
+                  items: [
+                    { value: '1', label: 'Học kỳ 1' },
+                    { value: '2', label: 'Học kỳ 2' },
+                    { value: 'Hè', label: 'Học kỳ Hè' }
+                  ]
+                })}
+                value={[formData.semester]}
+                onValueChange={(e) => setFormData({ ...formData, semester: e.value[0] || '1' })}
+                size='sm'
               >
-                <option value='1'>Học kỳ 1</option>
-                <option value='2'>Học kỳ 2</option>
-                <option value='Hè'>Học kỳ Hè</option>
-              </select>
+                <SelectTrigger className='w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all bg-white h-11 flex items-center'>
+                  <SelectValueText placeholder='Chọn học kỳ' className='flex items-center' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem item={{ value: '1', label: 'Học kỳ 1' }}>Học kỳ 1</SelectItem>
+                  <SelectItem item={{ value: '2', label: 'Học kỳ 2' }}>Học kỳ 2</SelectItem>
+                  <SelectItem item={{ value: 'Hè', label: 'Học kỳ Hè' }}>Học kỳ Hè</SelectItem>
+                </SelectContent>
+              </SelectRoot>
             </div>
 
             {/* Năm học */}
@@ -285,20 +315,35 @@ const CreateClass: React.FC = () => {
               <label className='block text-sm font-bold text-slate-700 mb-2'>
                 Giảng viên phụ trách <span className='text-red-500'>*</span>
               </label>
-              <select
-                required
+              <SelectRoot
+                collection={createListCollection({
+                  items: lecturers.map((lecturer) => ({
+                    value: lecturer.id,
+                    label: `${lecturer.id} - ${lecturer.name || lecturer.fullName}`
+                  }))
+                })}
+                value={formData.teacherId ? [formData.teacherId] : []}
+                onValueChange={(e) => setFormData({ ...formData, teacherId: e.value[0] || '' })}
                 disabled={lecturers.length === 0}
-                className='w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed'
-                value={formData.teacherId}
-                onChange={(e) => setFormData({ ...formData, teacherId: e.target.value })}
+                size='sm'
               >
-                <option value=''>-- Chọn giảng viên --</option>
-                {lecturers.map((lecturer) => (
-                  <option key={lecturer.id} value={lecturer.id}>
-                    {lecturer.id} - {lecturer.name || lecturer.fullName}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger
+                  className='w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all bg-white h-11 flex items-center'
+                  clearable={!!formData.teacherId}
+                >
+                  <SelectValueText placeholder='-- Chọn giảng viên --' className='flex items-center' />
+                </SelectTrigger>
+                <SelectContent>
+                  {lecturers.map((lecturer) => (
+                    <SelectItem
+                      key={lecturer.id}
+                      item={{ value: lecturer.id, label: `${lecturer.id} - ${lecturer.name || lecturer.fullName}` }}
+                    >
+                      {lecturer.id} - {lecturer.name || lecturer.fullName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </SelectRoot>
               {lecturers.length === 0 && (
                 <p className='text-xs text-amber-600 mt-1'>
                   Không có dữ liệu giảng viên. Vui lòng quay lại danh sách lớp học.
@@ -329,14 +374,25 @@ const CreateClass: React.FC = () => {
             {/* Trạng thái */}
             <div className='md:col-span-2'>
               <label className='block text-sm font-bold text-slate-700 mb-2'>Trạng thái</label>
-              <select
-                className='w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all'
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: parseInt(e.target.value) })}
+              <SelectRoot
+                collection={createListCollection({
+                  items: [
+                    { value: '1', label: 'Đang mở' },
+                    { value: '0', label: 'Đóng' }
+                  ]
+                })}
+                value={[String(formData.status)]}
+                onValueChange={(e) => setFormData({ ...formData, status: parseInt(e.value[0] || '1') })}
+                size='sm'
               >
-                <option value={1}>Đang mở</option>
-                <option value={0}>Đóng</option>
-              </select>
+                <SelectTrigger className='w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all bg-white h-11 flex items-center'>
+                  <SelectValueText placeholder='Chọn trạng thái' className='flex items-center' />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem item={{ value: '1', label: 'Đang mở' }}>Đang mở</SelectItem>
+                  <SelectItem item={{ value: '0', label: 'Đóng' }}>Đóng</SelectItem>
+                </SelectContent>
+              </SelectRoot>
             </div>
 
             {/* Mô tả */}

@@ -162,10 +162,10 @@ export default function Navbar() {
       <nav className='navbar'>
         <div className='navbar-container'>
           <Link to={getHomePath()} className='navbar-logo'>
-            <img src='/Logo_AWS_FCJ.png' alt='LMS FCJ' style={{ height: '40px' }} />
+            <img src='/Logo_FCJ_Nolinks.jpg' alt='LMS FCJ' style={{ height: '40px' }} />
           </Link>
 
-          <div className='navbar-menu'>
+          <div className='navbar-menu'>s
             {navItems.map((item) => (
               <Link
                 key={item.href}

@@ -144,7 +144,7 @@ const AdminLayout: React.FC = () => {
           {/* Logo & Text - Visible when Expanded */}
           <div className={`flex items-center gap-3 overflow-hidden ${isCollapsed ? 'hidden' : 'flex'}`}>
             <div className='w-15 h-10 rounded-xl flex items-center justify-center shadow-lg shrink-0'>
-              <img src='/Logo_AWS.png' alt='Logo' className='w-full h-full object-contain' />
+              <img src='/Logo_FCJ.jpg' alt='Logo' className='w-full h-full object-contain' />
             </div>
             <div className='min-w-[140px]'>
               <h1 className='text-lg font-bold text-white leading-tight whitespace-nowrap'>Uni LMS</h1>
@@ -163,7 +163,7 @@ const AdminLayout: React.FC = () => {
               title='Mở rộng'
             >
               <img
-                src='/Logo_AWS.png'
+                src='/Logo_FCJ.jpg'
                 alt='Logo'
                 className='w-full h-full object-contain group-hover:rotate-12 transition-transform'
               />

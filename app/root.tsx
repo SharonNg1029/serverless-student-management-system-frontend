@@ -25,7 +25,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <meta charSet='utf-8' />
         <meta name='viewport' content='width=device-width, initial-scale=1' />
         <link rel='icon' type='image/png' href='/Logo_AWS_FCJ.png' />
-        <title>Serverless Student Management</title>
+        <title>Serverless Student Management System</title>
         <script src='https://cdn.tailwindcss.com'></script>
         <script src='https://accounts.google.com/gsi/client' async defer></script>
         <link

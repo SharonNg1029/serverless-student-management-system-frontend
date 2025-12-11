@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { Send, Loader2, BookOpen, Users } from 'lucide-react'
-import { Box, VStack, HStack, Text, Card, Spinner } from '@chakra-ui/react'
+import { Box, VStack, Text, Spinner, createListCollection } from '@chakra-ui/react'
 import PageHeader from '../../components/ui/PageHeader'
+import { SelectRoot, SelectTrigger, SelectContent, SelectItem, SelectValueText } from '../../components/ui/select'
 import { toaster } from '../../components/ui/toaster'
 import { lecturerClassApi } from '../../services/lecturerApi'
 import { fetchAuthSession } from '@aws-amplify/auth'
@@ -182,19 +183,34 @@ export default function LecturerNotificationsSendPage() {
                   <label className='block text-sm font-bold text-slate-700 mb-2'>
                     Chọn lớp học <span className='text-red-500'>*</span>
                   </label>
-                  <select
-                    required
-                    value={selectedClassId}
-                    onChange={(e) => setSelectedClassId(e.target.value)}
-                    className='w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all'
+                  <SelectRoot
+                    collection={createListCollection({
+                      items: classes.map((cls) => ({
+                        value: cls.id,
+                        label: cls.name + (cls.subjectName ? ` - ${cls.subjectName}` : '')
+                      }))
+                    })}
+                    value={selectedClassId ? [selectedClassId] : []}
+                    onValueChange={(e) => setSelectedClassId(e.value[0] || '')}
+                    size='sm'
                   >
-                    <option value=''>-- Chọn lớp học --</option>
-                    {classes.map((cls) => (
-                      <option key={cls.id} value={cls.id}>
-                        {cls.name} {cls.subjectName ? `- ${cls.subjectName}` : ''}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger
+                      className='w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-[#dd7323]/20 focus:border-[#dd7323] outline-none transition-all bg-white h-11 flex items-center'
+                      clearable={!!selectedClassId}
+                    >
+                      <SelectValueText placeholder='-- Chọn lớp học --' className='flex items-center' />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {classes.map((cls) => (
+                        <SelectItem
+                          key={cls.id}
+                          item={{ value: cls.id, label: cls.name + (cls.subjectName ? ` - ${cls.subjectName}` : '') }}
+                        >
+                          {cls.name} {cls.subjectName ? `- ${cls.subjectName}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </SelectRoot>
                   {classes.length === 0 && (
                     <p className='text-xs text-slate-500 mt-1'>Bạn chưa được phân công lớp nào</p>
                   )}

@@ -925,24 +925,56 @@ export const lecturerPostApi = {
 // ============================================
 
 export const profileApi = {
-  // Get profile - Authorization header được tự động thêm bởi axios interceptor
+  /**
+   * GET /api/users/profile
+   * Lấy thông tin profile của user hiện tại
+   * Nếu avatar là fileKey (không phải URL), sẽ gọi API download để lấy presigned URL
+   */
   getProfile: async () => {
     const response = await api.get<{ data: ProfileDTO }>('/api/users/profile')
-    return response.data.data
+    const profileData = response.data.data
+
+    // Kiểm tra nếu avatar là fileKey (không phải URL đầy đủ)
+    // FileKey thường không bắt đầu bằng http:// hoặc https://
+    if (
+      profileData.avatar &&
+      !profileData.avatar.startsWith('http://') &&
+      !profileData.avatar.startsWith('https://') &&
+      !profileData.avatar.startsWith('data:')
+    ) {
+      try {
+        // Gọi API download để lấy presigned URL
+        const downloadUrl = await getDownloadUrl(profileData.avatar)
+        profileData.avatar = downloadUrl
+      } catch (error) {
+        console.error('Failed to get avatar download URL:', error)
+        // Giữ nguyên avatar nếu không lấy được URL (sẽ fallback về UI avatar)
+      }
+    }
+
+    return profileData
   },
 
   /**
    * PATCH /api/users/profile
-   * Update profile - dùng axios để có headers tự động
+   * Update profile
+   * Body: { name, dateOfBirth, avatarUrl }
+   *
+   * Flow upload avatar:
+   * 1. GET /api/upload/presigned-url?fileName={fileName} → { uploadUrl, fileKey }
+   * 2. PUT uploadUrl với file content
+   * 3. PATCH /api/users/profile với avatarUrl = fileKey
    */
   updateProfile: async (data: UpdateProfileRequest & { avatarFile?: File }) => {
-    // Upload avatar to S3 first if any (dùng axios)
-    let avatarKey: string | undefined
+    // Upload avatar to S3 first if any
+    let avatarUrl: string | undefined
     if (data.avatarFile) {
-      // Step 1: Get presigned URL (dùng axios)
+      // Step 1: Get presigned URL - truyền fileName
       const { data: presignedData } = await api.get('/api/upload/presigned-url', {
         params: { fileName: data.avatarFile.name }
       })
+
+      console.log('Presigned URL response:', presignedData)
 
       // Step 2: Upload to S3 (không dùng Authorization header)
       const uploadResponse = await fetch(presignedData.uploadUrl, {
@@ -955,14 +987,16 @@ export const profileApi = {
         throw new Error('Lỗi khi upload avatar lên S3')
       }
 
-      avatarKey = presignedData.fileKey
+      // Step 3: Lấy fileKey để gửi cho API update profile
+      // BE sẽ lưu fileKey này, khi get profile sẽ trả về URL đầy đủ hoặc fileKey
+      avatarUrl = presignedData.fileKey
     }
 
-    // Step 3: Call API with avatarKey (dùng axios)
+    // Step 4: Call API PATCH /api/users/profile với avatarUrl
     const response = await api.patch('/api/users/profile', {
       name: data.name,
       dateOfBirth: data.dateOfBirth,
-      avatarKey: avatarKey
+      avatarUrl: avatarUrl // BE yêu cầu field này là avatarUrl
     })
 
     return response.data?.data || response.data

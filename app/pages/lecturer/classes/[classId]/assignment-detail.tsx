@@ -24,7 +24,20 @@ import {
   type ColumnDef,
   type SortingState
 } from '@tanstack/react-table'
-import { FileText, ChevronLeft, Download, CheckCircle, Clock, ArrowUpDown, Users, Search, Check, X, Edit3, Eye } from 'lucide-react'
+import {
+  FileText,
+  ChevronLeft,
+  Download,
+  CheckCircle,
+  Clock,
+  ArrowUpDown,
+  Users,
+  Search,
+  Check,
+  X,
+  Edit3,
+  Eye
+} from 'lucide-react'
 import StatsCard from '../../../../components/ui/StatsCard'
 import EmptyState from '../../../../components/ui/EmptyState'
 import { ErrorDisplay } from '../../../../components/ui/ErrorDisplay'
@@ -50,11 +63,81 @@ const MOCK_ASSIGNMENT: AssignmentDTO = {
 }
 
 const MOCK_SUBMISSIONS: AssignmentSubmissionDTO[] = [
-  { id: 1, assignment_id: 1, student_id: 1, student_name: 'Nguyễn Văn A', student_code: 'SV001', file_url: 'https://example.com/SV001_Lab01.zip', file_name: 'SV001_Lab01.zip', submitted_at: '2024-10-09T20:30:00Z', score: 8.5, feedback: 'Tốt', status: 'on_time', created_at: '', updated_at: '' },
-  { id: 2, assignment_id: 1, student_id: 2, student_name: 'Trần Thị B', student_code: 'SV002', file_url: 'https://example.com/SV002_Lab01.zip', file_name: 'SV002_Lab01.zip', submitted_at: '2024-10-10T22:00:00Z', score: 9.0, feedback: 'Xuất sắc', status: 'on_time', created_at: '', updated_at: '' },
-  { id: 3, assignment_id: 1, student_id: 3, student_name: 'Lê Văn C', student_code: 'SV003', file_url: '', file_name: '', submitted_at: '2024-10-11T08:00:00Z', score: undefined, feedback: undefined, status: 'late', created_at: '', updated_at: '' },
-  { id: 4, assignment_id: 1, student_id: 4, student_name: 'Phạm Thị D', student_code: 'SV004', file_url: 'https://example.com/SV004_Lab01.zip', file_name: 'SV004_Lab01.zip', submitted_at: '2024-10-10T18:00:00Z', score: undefined, feedback: undefined, status: 'on_time', created_at: '', updated_at: '' },
-  { id: 5, assignment_id: 1, student_id: 5, student_name: 'Hoàng Văn E', student_code: 'SV005', file_url: '', file_name: '', submitted_at: '2024-10-10T12:00:00Z', score: 7.5, feedback: 'Khá', status: 'on_time', created_at: '', updated_at: '' }
+  {
+    id: 1,
+    assignment_id: 1,
+    student_id: 1,
+    student_name: 'Nguyễn Văn A',
+    student_code: 'SV001',
+    file_url: 'https://example.com/SV001_Lab01.zip',
+    file_name: 'SV001_Lab01.zip',
+    submitted_at: '2024-10-09T20:30:00Z',
+    score: 8.5,
+    feedback: 'Tốt',
+    status: 'on_time',
+    created_at: '',
+    updated_at: ''
+  },
+  {
+    id: 2,
+    assignment_id: 1,
+    student_id: 2,
+    student_name: 'Trần Thị B',
+    student_code: 'SV002',
+    file_url: 'https://example.com/SV002_Lab01.zip',
+    file_name: 'SV002_Lab01.zip',
+    submitted_at: '2024-10-10T22:00:00Z',
+    score: 9.0,
+    feedback: 'Xuất sắc',
+    status: 'on_time',
+    created_at: '',
+    updated_at: ''
+  },
+  {
+    id: 3,
+    assignment_id: 1,
+    student_id: 3,
+    student_name: 'Lê Văn C',
+    student_code: 'SV003',
+    file_url: '',
+    file_name: '',
+    submitted_at: '2024-10-11T08:00:00Z',
+    score: undefined,
+    feedback: undefined,
+    status: 'late',
+    created_at: '',
+    updated_at: ''
+  },
+  {
+    id: 4,
+    assignment_id: 1,
+    student_id: 4,
+    student_name: 'Phạm Thị D',
+    student_code: 'SV004',
+    file_url: 'https://example.com/SV004_Lab01.zip',
+    file_name: 'SV004_Lab01.zip',
+    submitted_at: '2024-10-10T18:00:00Z',
+    score: undefined,
+    feedback: undefined,
+    status: 'on_time',
+    created_at: '',
+    updated_at: ''
+  },
+  {
+    id: 5,
+    assignment_id: 1,
+    student_id: 5,
+    student_name: 'Hoàng Văn E',
+    student_code: 'SV005',
+    file_url: '',
+    file_name: '',
+    submitted_at: '2024-10-10T12:00:00Z',
+    score: 7.5,
+    feedback: 'Khá',
+    status: 'on_time',
+    created_at: '',
+    updated_at: ''
+  }
 ]
 
 // Filter collections for Select components
@@ -92,22 +175,22 @@ export default function LecturerAssignmentDetail() {
   const { classId, assignmentId } = useParams<{ classId: string; assignmentId: string }>()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  
+
   // Get mode from URL params (view or grade)
   const mode = searchParams.get('mode') || 'view'
   const isGradeMode = mode === 'grade'
-  
+
   const [assignment, setAssignment] = useState<AssignmentDTO | null>(null)
   const [submissions, setSubmissions] = useState<AssignmentSubmissionDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [sorting, setSorting] = useState<SortingState>([])
-  
+
   // Filters
   const [searchKeyword, setSearchKeyword] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
   const [gradingFilter, setGradingFilter] = useState<string>(isGradeMode ? 'pending' : '')
-  
+
   // Inline editing
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editScore, setEditScore] = useState<string>('')
@@ -128,7 +211,7 @@ export default function LecturerAssignmentDetail() {
     try {
       const [assignmentRes, submissionsRes] = await Promise.all([
         lecturerAssignmentApi.getAssignmentById(Number(classId), Number(assignmentId)),
-        lecturerAssignmentApi.getSubmissions(Number(classId), Number(assignmentId))
+        lecturerAssignmentApi.getSubmissions(String(classId), String(assignmentId))
       ])
       setAssignment(assignmentRes)
       setSubmissions(submissionsRes.results || [])
@@ -148,13 +231,14 @@ export default function LecturerAssignmentDetail() {
   const filteredSubmissions = useMemo(() => {
     return submissions.filter((s) => {
       // Search by student name or code
-      const matchesSearch = !searchKeyword ||
+      const matchesSearch =
+        !searchKeyword ||
         s.student_name?.toLowerCase().includes(searchKeyword.toLowerCase()) ||
         s.student_code?.toLowerCase().includes(searchKeyword.toLowerCase())
-      
+
       // Status filter (on_time / late)
       const matchesStatus = !statusFilter || s.status === statusFilter
-      
+
       // Grading filter
       let matchesGrading = true
       if (gradingFilter === 'graded') {
@@ -162,7 +246,7 @@ export default function LecturerAssignmentDetail() {
       } else if (gradingFilter === 'pending') {
         matchesGrading = s.score === undefined
       }
-      
+
       return matchesSearch && matchesStatus && matchesGrading
     })
   }, [submissions, searchKeyword, statusFilter, gradingFilter])
@@ -195,18 +279,20 @@ export default function LecturerAssignmentDetail() {
     try {
       if (USE_MOCK_DATA) {
         setSubmissions((prev) =>
-          prev.map((s) =>
-            s.id === submissionId ? { ...s, score, graded_at: new Date().toISOString() } : s
-          )
+          prev.map((s) => (s.id === submissionId ? { ...s, score, graded_at: new Date().toISOString() } : s))
         )
       } else {
         // Use the new API endpoint: PUT /lecturer/assignments/{assignment_id}/update-grades
-        await lecturerAssignmentApi.gradeSubmission(
-          Number(classId),
-          Number(assignmentId),
-          submissionId,
-          { score }
-        )
+        // Find the submission to get studentId
+        const submission = submissions.find((s) => s.id === submissionId)
+        if (submission) {
+          await lecturerAssignmentApi.gradeStudent(
+            String(assignmentId),
+            String(classId),
+            String(submission.student_id),
+            score
+          )
+        }
         // Refresh data after grading
         fetchData()
       }
@@ -214,7 +300,7 @@ export default function LecturerAssignmentDetail() {
       console.error('Failed to save score:', err)
       setError('Không thể lưu điểm. Vui lòng thử lại.')
     }
-    
+
     setEditingId(null)
     setEditScore('')
   }
@@ -225,13 +311,21 @@ export default function LecturerAssignmentDetail() {
       {
         accessorKey: 'index',
         header: 'STT',
-        cell: ({ row }) => <Text color='gray.600' fontSize='sm'>{row.index + 1}</Text>,
+        cell: ({ row }) => (
+          <Text color='gray.600' fontSize='sm'>
+            {row.index + 1}
+          </Text>
+        ),
         size: 50
       },
       {
         accessorKey: 'student_code',
         header: 'MSSV',
-        cell: ({ row }) => <Text fontWeight='medium' color='gray.800'>{row.original.student_code}</Text>,
+        cell: ({ row }) => (
+          <Text fontWeight='medium' color='gray.800'>
+            {row.original.student_code}
+          </Text>
+        ),
         size: 100
       },
       {
@@ -242,7 +336,11 @@ export default function LecturerAssignmentDetail() {
             <ArrowUpDown size={14} />
           </HStack>
         ),
-        cell: ({ row }) => <Text fontWeight='medium' color='gray.800'>{row.original.student_name}</Text>
+        cell: ({ row }) => (
+          <Text fontWeight='medium' color='gray.800'>
+            {row.original.student_name}
+          </Text>
+        )
       },
       {
         accessorKey: 'submitted_at',
@@ -251,7 +349,8 @@ export default function LecturerAssignmentDetail() {
           const date = new Date(row.original.submitted_at)
           return (
             <Text color='gray.600' fontSize='sm'>
-              {date.toLocaleDateString('vi-VN')} {date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+              {date.toLocaleDateString('vi-VN')}{' '}
+              {date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
             </Text>
           )
         },
@@ -305,7 +404,7 @@ export default function LecturerAssignmentDetail() {
           const submission = row.original
           const isEditing = editingId === submission.id
           const isGraded = submission.score !== undefined
-          
+
           if (isEditing) {
             return (
               <HStack gap={1}>
@@ -322,9 +421,9 @@ export default function LecturerAssignmentDetail() {
                     borderColor='orange.300'
                     bg='white'
                     borderRadius='md'
-                    _focus={{ 
-                      borderColor: '#dd7323', 
-                      boxShadow: '0 0 0 2px rgba(221, 115, 35, 0.2)' 
+                    _focus={{
+                      borderColor: '#dd7323',
+                      boxShadow: '0 0 0 2px rgba(221, 115, 35, 0.2)'
                     }}
                     autoFocus
                     onKeyDown={(e) => {
@@ -337,7 +436,13 @@ export default function LecturerAssignmentDetail() {
                     <NumberInput.DecrementTrigger />
                   </NumberInput.Control>
                 </NumberInput.Root>
-                <Button size='xs' colorPalette='green' variant='ghost' onClick={() => saveScore(submission.id)} title='Lưu'>
+                <Button
+                  size='xs'
+                  colorPalette='green'
+                  variant='ghost'
+                  onClick={() => saveScore(submission.id)}
+                  title='Lưu'
+                >
                   <Check size={14} />
                 </Button>
                 <Button size='xs' colorPalette='red' variant='ghost' onClick={cancelEditing} title='Hủy'>
@@ -346,13 +451,9 @@ export default function LecturerAssignmentDetail() {
               </HStack>
             )
           }
-          
+
           return (
-            <Text 
-              fontWeight='bold' 
-              color={isGraded ? '#dd7323' : 'gray.400'}
-              fontSize='sm'
-            >
+            <Text fontWeight='bold' color={isGraded ? '#dd7323' : 'gray.400'} fontSize='sm'>
               {isGraded ? `${submission.score!.toFixed(1)}/${assignment?.max_score || 10}` : '—'}
             </Text>
           )
@@ -365,7 +466,7 @@ export default function LecturerAssignmentDetail() {
         cell: ({ row }) => {
           const submission = row.original
           const hasFile = submission.file_url && submission.file_url.trim() !== ''
-          
+
           return (
             <Box display='flex' justifyContent='center'>
               <Button
@@ -398,7 +499,7 @@ export default function LecturerAssignmentDetail() {
           const submission = row.original
           const isGraded = submission.score !== undefined
           const isEditing = editingId === submission.id
-          
+
           return (
             <Box display='flex' justifyContent='center'>
               <Button
@@ -410,11 +511,15 @@ export default function LecturerAssignmentDetail() {
                 disabled={isGraded || isEditing}
                 opacity={isGraded ? 0.6 : 1}
                 cursor={isGraded ? 'not-allowed' : 'pointer'}
-                _hover={!isGraded ? { 
-                  bg: 'linear-gradient(135deg, #c5651f 0%, #d97706 100%)',
-                  transform: 'translateY(-1px)',
-                  shadow: 'md'
-                } : {}}
+                _hover={
+                  !isGraded
+                    ? {
+                        bg: 'linear-gradient(135deg, #c5651f 0%, #d97706 100%)',
+                        transform: 'translateY(-1px)',
+                        shadow: 'md'
+                      }
+                    : {}
+                }
                 transition='all 0.2s'
                 onClick={(e) => {
                   e.stopPropagation()
@@ -484,10 +589,14 @@ export default function LecturerAssignmentDetail() {
         <HStack px={6} mb={6} justify='space-between' flexWrap='wrap' gap={4}>
           <VStack align='flex-start' gap={1}>
             <HStack gap={3}>
-              <Box 
-                p={3} 
-                bg={isGradeMode ? 'linear-gradient(135deg, #dd7323 0%, #f59e0b 100%)' : 'linear-gradient(135deg, #10b981 0%, #34d399 100%)'} 
-                borderRadius='xl' 
+              <Box
+                p={3}
+                bg={
+                  isGradeMode
+                    ? 'linear-gradient(135deg, #dd7323 0%, #f59e0b 100%)'
+                    : 'linear-gradient(135deg, #10b981 0%, #34d399 100%)'
+                }
+                borderRadius='xl'
                 shadow='lg'
               >
                 {isGradeMode ? <Edit3 size={28} color='white' /> : <Eye size={28} color='white' />}
@@ -497,9 +606,9 @@ export default function LecturerAssignmentDetail() {
                   <Text fontSize='2xl' fontWeight='bold' color='gray.800'>
                     {assignment?.title}
                   </Text>
-                  <Badge 
-                    colorPalette={isGradeMode ? 'orange' : 'green'} 
-                    variant='solid' 
+                  <Badge
+                    colorPalette={isGradeMode ? 'orange' : 'green'}
+                    variant='solid'
                     borderRadius='full'
                     px={3}
                     py={1}
@@ -508,7 +617,11 @@ export default function LecturerAssignmentDetail() {
                   </Badge>
                 </HStack>
                 <HStack gap={2} mt={1}>
-                  <Badge colorPalette={TYPE_COLORS[assignment?.type || 'homework']} variant='subtle' borderRadius='full'>
+                  <Badge
+                    colorPalette={TYPE_COLORS[assignment?.type || 'homework']}
+                    variant='subtle'
+                    borderRadius='full'
+                  >
                     {TYPE_LABELS[assignment?.type || 'homework']}
                   </Badge>
                   <Text color='gray.500' fontSize='sm'>
@@ -521,14 +634,14 @@ export default function LecturerAssignmentDetail() {
               </VStack>
             </HStack>
           </VStack>
-          
+
           {/* Mode Toggle Button */}
           <Button
             variant='outline'
             borderColor={isGradeMode ? 'green.400' : 'orange.400'}
             color={isGradeMode ? 'green.600' : '#dd7323'}
             borderRadius='xl'
-            _hover={{ 
+            _hover={{
               bg: isGradeMode ? 'green.50' : 'orange.50',
               borderColor: isGradeMode ? 'green.500' : 'orange.500'
             }}
@@ -557,29 +670,29 @@ export default function LecturerAssignmentDetail() {
             <StatsCard label='Nộp đúng hạn' value={stats.onTime} icon={Clock} />
           </Box>
         </HStack>
-        
+
         {/* Grading Progress Bar */}
         {stats.total > 0 && (
           <Box px={6} mb={6}>
             <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.200' shadow='sm'>
               <Card.Body p={4}>
                 <HStack justify='space-between' mb={2}>
-                  <Text fontWeight='medium' color='gray.700'>Tiến độ chấm điểm</Text>
+                  <Text fontWeight='medium' color='gray.700'>
+                    Tiến độ chấm điểm
+                  </Text>
                   <Text fontWeight='bold' color='#dd7323'>
                     {Math.round((stats.graded / stats.total) * 100)}%
                   </Text>
                 </HStack>
-                <Box 
-                  w='full' 
-                  h='8px' 
-                  bg='gray.100' 
-                  borderRadius='full' 
-                  overflow='hidden'
-                >
-                  <Box 
-                    h='full' 
+                <Box w='full' h='8px' bg='gray.100' borderRadius='full' overflow='hidden'>
+                  <Box
+                    h='full'
                     w={`${(stats.graded / stats.total) * 100}%`}
-                    bg={stats.graded === stats.total ? 'linear-gradient(90deg, #10b981 0%, #34d399 100%)' : 'linear-gradient(90deg, #dd7323 0%, #f59e0b 100%)'}
+                    bg={
+                      stats.graded === stats.total
+                        ? 'linear-gradient(90deg, #10b981 0%, #34d399 100%)'
+                        : 'linear-gradient(90deg, #dd7323 0%, #f59e0b 100%)'
+                    }
                     borderRadius='full'
                     transition='width 0.5s ease'
                   />
@@ -625,11 +738,7 @@ export default function LecturerAssignmentDetail() {
                 size='md'
                 w='160px'
               >
-                <SelectTrigger
-                  borderColor='orange.200'
-                  borderRadius='xl'
-                  _hover={{ borderColor: '#dd7323' }}
-                >
+                <SelectTrigger borderColor='orange.200' borderRadius='xl' _hover={{ borderColor: '#dd7323' }}>
                   <SelectValueText placeholder='Tất cả TT nộp' />
                 </SelectTrigger>
                 <SelectContent>
@@ -649,11 +758,7 @@ export default function LecturerAssignmentDetail() {
                 size='md'
                 w='170px'
               >
-                <SelectTrigger
-                  borderColor='orange.200'
-                  borderRadius='xl'
-                  _hover={{ borderColor: '#dd7323' }}
-                >
+                <SelectTrigger borderColor='orange.200' borderRadius='xl' _hover={{ borderColor: '#dd7323' }}>
                   <SelectValueText placeholder='Tất cả TT chấm' />
                 </SelectTrigger>
                 <SelectContent>
@@ -671,13 +776,20 @@ export default function LecturerAssignmentDetail() {
         {/* Submissions Table */}
         <Box px={6}>
           {filteredSubmissions.length === 0 ? (
-            <EmptyState 
-              icon={FileText} 
-              title='Không tìm thấy bài nộp' 
-              description={submissions.length === 0 ? 'Sinh viên chưa nộp bài tập này' : 'Thử thay đổi bộ lọc'} 
+            <EmptyState
+              icon={FileText}
+              title='Không tìm thấy bài nộp'
+              description={submissions.length === 0 ? 'Sinh viên chưa nộp bài tập này' : 'Thử thay đổi bộ lọc'}
             />
           ) : (
-            <Card.Root bg='white' borderRadius='xl' border='1px solid' borderColor='orange.200' shadow='sm' overflow='hidden'>
+            <Card.Root
+              bg='white'
+              borderRadius='xl'
+              border='1px solid'
+              borderColor='orange.200'
+              shadow='sm'
+              overflow='hidden'
+            >
               <Table.Root size='sm'>
                 <Table.Header>
                   {table.getHeaderGroups().map((headerGroup) => (
@@ -692,7 +804,9 @@ export default function LecturerAssignmentDetail() {
                           fontSize='xs'
                           style={{ width: header.getSize() }}
                         >
-                          {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                          {header.isPlaceholder
+                            ? null
+                            : flexRender(header.column.columnDef.header, header.getContext())}
                         </Table.ColumnHeader>
                       ))}
                     </Table.Row>

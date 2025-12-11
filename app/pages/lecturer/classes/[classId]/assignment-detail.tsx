@@ -270,29 +270,34 @@ export default function LecturerAssignmentDetail() {
     setEditScore('')
   }
 
-  const saveScore = async (submissionId: number) => {
+  const saveScore = async (submission: AssignmentSubmissionDTO) => {
     const score = parseFloat(editScore)
     if (isNaN(score) || score < 0 || score > (assignment?.max_score || 10)) {
+      return
+    }
+
+    // Lấy studentId từ submission (có thể là student_id hoặc studentId)
+    const studentId = String(submission.student_id || (submission as any).studentId || '')
+    if (!studentId) {
+      setError('Không tìm thấy mã sinh viên')
       return
     }
 
     try {
       if (USE_MOCK_DATA) {
         setSubmissions((prev) =>
-          prev.map((s) => (s.id === submissionId ? { ...s, score, graded_at: new Date().toISOString() } : s))
+          prev.map((s) =>
+            s.id === submission.id ? { ...s, score, graded_at: new Date().toISOString() } : s
+          )
         )
       } else {
         // Use the new API endpoint: PUT /lecturer/assignments/{assignment_id}/update-grades
-        // Find the submission to get studentId
-        const submission = submissions.find((s) => s.id === submissionId)
-        if (submission) {
-          await lecturerAssignmentApi.gradeStudent(
-            String(assignmentId),
-            String(classId),
-            String(submission.student_id),
-            score
-          )
-        }
+        await lecturerAssignmentApi.gradeSubmission(
+          String(classId),
+          String(assignmentId),
+          studentId,
+          { score }
+        )
         // Refresh data after grading
         fetchData()
       }
@@ -427,7 +432,7 @@ export default function LecturerAssignmentDetail() {
                     }}
                     autoFocus
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') saveScore(submission.id)
+                      if (e.key === 'Enter') saveScore(submission)
                       if (e.key === 'Escape') cancelEditing()
                     }}
                   />
@@ -436,13 +441,7 @@ export default function LecturerAssignmentDetail() {
                     <NumberInput.DecrementTrigger />
                   </NumberInput.Control>
                 </NumberInput.Root>
-                <Button
-                  size='xs'
-                  colorPalette='green'
-                  variant='ghost'
-                  onClick={() => saveScore(submission.id)}
-                  title='Lưu'
-                >
+                <Button size='xs' colorPalette='green' variant='ghost' onClick={() => saveScore(submission)} title='Lưu'>
                   <Check size={14} />
                 </Button>
                 <Button size='xs' colorPalette='red' variant='ghost' onClick={cancelEditing} title='Hủy'>

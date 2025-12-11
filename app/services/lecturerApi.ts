@@ -634,6 +634,67 @@ export const lecturerAssignmentApi = {
     return response.data
   },
 
+  /**
+   * PUT /api/lecturer/assignments/{assignment_id}/update-grades?classId={classId}
+   * Chấm điểm submission (với headers đặc biệt)
+   * Body: { assignmentId, studentId, score, feedback }
+   *
+   * API này yêu cầu header đặc biệt:
+   * - Authorization: Bearer <idToken>
+   * - user-idToken: <idToken>
+   */
+  gradeSubmission: async (
+    classId: string,
+    assignmentId: string,
+    studentId: string,
+    data: { score: number; feedback?: string }
+  ) => {
+    // Lấy idToken từ Cognito session
+    const session = await fetchAuthSession()
+    const idToken = session.tokens?.idToken?.toString()
+
+    if (!idToken) {
+      throw new Error('Không tìm thấy token xác thực')
+    }
+
+    // Normalize assignmentId - ensure it has ASS_ prefix
+    let normalizedAssignmentId = assignmentId
+    if (!normalizedAssignmentId.startsWith('ASS_') && !normalizedAssignmentId.includes('#')) {
+      normalizedAssignmentId = `ASS_${normalizedAssignmentId}`
+    }
+    normalizedAssignmentId = normalizedAssignmentId.replace('ASSIGNMENT#', 'ASS_')
+
+    const baseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+    const url = `${baseUrl}/api/lecturer/assignments/${encodeURIComponent(normalizedAssignmentId)}/update-grades?classId=${encodeURIComponent(classId)}`
+
+    console.log('=== GRADE SUBMISSION DEBUG ===')
+    console.log('URL:', url)
+    console.log('Body:', { assignmentId: normalizedAssignmentId, studentId, score: data.score, feedback: data.feedback || '' })
+
+    const response = await fetch(url, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
+        'user-idToken': idToken
+      },
+      body: JSON.stringify({
+        assignmentId: normalizedAssignmentId,
+        studentId: studentId,
+        score: data.score,
+        feedback: data.feedback || ''
+      })
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      console.error('Grade submission error:', errorData)
+      throw new Error(errorData.message || 'Lỗi khi chấm điểm')
+    }
+
+    return response.json()
+  },
+
   // Publish/unpublish assignment (convenience method)
   togglePublish: async (assignmentId: string, classId: string, isPublished: boolean) => {
     const response = await api.put<AssignmentDTO>(

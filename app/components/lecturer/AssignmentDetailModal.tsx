@@ -137,13 +137,11 @@ export default function AssignmentDetailModal({ isOpen, onClose, assignment, cla
       const url = `${baseUrl}/api/lecturer/assignments/${normalizedAssignmentId}/update-grades?classId=${normalizedClassId}`
 
       // Body theo Swagger: { assignmentId, studentId, score, feedback }
-      // Thêm classId vào body để BE có thể verify giảng viên
       const requestBody = {
         assignmentId: normalizedAssignmentId,
         studentId: studentId,
         score: score,
-        feedback: feedbackInput || '',
-        classId: normalizedClassId
+        feedback: feedbackInput || ''
       }
 
       console.log('=== GRADE API DEBUG ===')

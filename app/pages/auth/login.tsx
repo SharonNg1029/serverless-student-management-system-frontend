@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { useNavigate } from 'react-router'
 import { useAuthStore } from '../../store/authStore'
@@ -55,6 +55,24 @@ export default function LoginRoute() {
   const [newPasswordData, setNewPasswordData] = useState({ newPassword: '', confirmPassword: '' })
   const [localError, setLocalError] = useState<string | null>(null)
   const [requireNewPassword, setRequireNewPassword] = useState(false)
+  const passwordRef = useRef<HTMLInputElement>(null)
+  const newPasswordRef = useRef<HTMLInputElement>(null)
+  const confirmPasswordRef = useRef<HTMLInputElement>(null)
+
+  // Xử lý Enter: email -> password, password -> submit
+  const handleEmailKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      passwordRef.current?.focus()
+    }
+  }
+
+  const handleNewPasswordKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      confirmPasswordRef.current?.focus()
+    }
+  }
 
   const getRedirectPathByRole = (role: string): string => {
     switch (role) {
@@ -334,6 +352,7 @@ export default function LoginRoute() {
                   placeholder='your@email.com'
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onKeyDown={handleEmailKeyDown}
                   required
                 />
               </div>
@@ -342,6 +361,7 @@ export default function LoginRoute() {
                 <label htmlFor='password'>Mật khẩu</label>
                 <div className='password-input'>
                   <input
+                    ref={passwordRef}
                     id='password'
                     type={showPassword ? 'text' : 'password'}
                     placeholder='••••••••••••'
@@ -399,11 +419,13 @@ export default function LoginRoute() {
                 <label htmlFor='newPassword'>Mật khẩu mới</label>
                 <div className='password-input'>
                   <input
+                    ref={newPasswordRef}
                     id='newPassword'
                     type={showNewPassword ? 'text' : 'password'}
                     placeholder='Mật khẩu mới (8+ ký tự, hoa, thường, đặc biệt)'
                     value={newPasswordData.newPassword}
                     onChange={(e) => setNewPasswordData({ ...newPasswordData, newPassword: e.target.value })}
+                    onKeyDown={handleNewPasswordKeyDown}
                     autoComplete='new-password'
                     required
                     minLength={8}
@@ -422,6 +444,7 @@ export default function LoginRoute() {
                 <label htmlFor='confirmPassword'>Xác nhận mật khẩu</label>
                 <div className='password-input'>
                   <input
+                    ref={confirmPasswordRef}
                     id='confirmPassword'
                     type={showConfirmPassword ? 'text' : 'password'}
                     placeholder='Nhập lại mật khẩu mới'

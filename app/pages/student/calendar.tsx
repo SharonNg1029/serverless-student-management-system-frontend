@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState, useMemo, useEffect } from 'react'
+import { useNavigate } from 'react-router'
 import {
   Box,
   Flex,
@@ -15,11 +15,11 @@ import {
   Center,
   Card
 } from '@chakra-ui/react'
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon } from 'lucide-react'
-import { fetchCalendarAssignments } from '~/services/studentApi'
-import { AssignmentModal } from '~/components'
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, X, Clock, BookOpen, FileText, ExternalLink } from 'lucide-react'
+import { studentClassApi, type StudentClassAssignmentDTO } from '~/services/studentApi'
+import api from '~/utils/axios'
 import PageHeader from '~/components/ui/PageHeader'
-import type { CalendarAssignment, CalendarDay } from '~/types'
+import { toaster } from '~/components/ui/toaster'
 
 const DAYS = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
 const MONTHS = [
@@ -38,41 +38,113 @@ const MONTHS = [
 ]
 
 // Assignment type colors
-const TYPE_COLORS: Record<CalendarAssignment['type'], string> = {
-  homework: 'green.500',
-  project: 'purple.500',
+const TYPE_COLORS: Record<string, string> = {
+  homework: '#22c55e',
+  project: '#8b5cf6',
   midterm: '#dd7323',
-  final: 'red.500'
+  final: '#ef4444'
 }
 
-const TYPE_BG: Record<CalendarAssignment['type'], string> = {
-  homework: 'green.50',
-  project: 'purple.50',
-  midterm: 'orange.50',
-  final: 'red.50'
+const TYPE_LABELS: Record<string, string> = {
+  homework: 'Bài tập',
+  project: 'Dự án',
+  midterm: 'Giữa kỳ',
+  final: 'Cuối kỳ'
 }
 
-// Extended CalendarDay with assignments for this page
-interface CalendarDayWithAssignments extends CalendarDay {
-  assignments: CalendarAssignment[]
+// Extended assignment with class info
+interface CalendarAssignmentItem extends StudentClassAssignmentDTO {
+  class_name?: string
+  subject_name?: string
+}
+
+// Calendar day type
+interface CalendarDayData {
+  date: Date
+  isCurrentMonth: boolean
+  isToday: boolean
+  assignments: CalendarAssignmentItem[]
 }
 
 export default function StudentCalendar() {
+  const navigate = useNavigate()
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [selectedAssignment, setSelectedAssignment] = useState<CalendarAssignment | null>(null)
+  const [assignments, setAssignments] = useState<CalendarAssignmentItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [selectedDay, setSelectedDay] = useState<CalendarDayData | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
 
-  // Calendar assignments - fix cứng empty array vì BE chưa có API
-  // TODO: Khi BE có API /student/assignments/calendar thì bỏ comment dòng dưới
-  const assignments: CalendarAssignment[] = []
-  const isLoading = false
-  // const { data: assignments = [], isLoading } = useQuery({
-  //   queryKey: ['calendar-assignments', currentDate.getMonth(), currentDate.getFullYear()],
-  //   queryFn: () => fetchCalendarAssignments(currentDate.getMonth() + 1, currentDate.getFullYear())
-  // })
+  // Fetch all assignments from enrolled classes
+  useEffect(() => {
+    const fetchAllAssignments = async () => {
+      try {
+        setIsLoading(true)
+
+        // 1. Get enrolled classes
+        const enrolledClasses = await studentClassApi.getEnrolledClasses()
+        console.log('Enrolled classes:', enrolledClasses)
+
+        if (!enrolledClasses || enrolledClasses.length === 0) {
+          setAssignments([])
+          return
+        }
+
+        // 2. Fetch assignments for each class in parallel
+        const assignmentPromises = enrolledClasses.map(async (cls: any) => {
+          try {
+            // API trả về "id" thay vì "class_id" - ví dụ: "8FDFBC5E"
+            const rawClassId = cls.id || cls.class_id || ''
+            const normalizedClassId = rawClassId.replace('CLASS#', '')
+            
+            console.log(`Fetching assignments for class: ${normalizedClassId}`)
+            // Call API directly: /api/student/assignments?classId=xxx
+            const response = await api.get('/api/student/assignments', {
+              params: { classId: normalizedClassId }
+            })
+            console.log(`API Response for ${normalizedClassId}:`, response.data)
+            
+            // Extract assignments from response
+            const classAssignments: StudentClassAssignmentDTO[] = 
+              (response.data as any)?.data || 
+              response.data?.results || 
+              (Array.isArray(response.data) ? response.data : [])
+            console.log(`Assignments for ${normalizedClassId}:`, classAssignments)
+
+            // Add class info to each assignment
+            return classAssignments.map((a) => ({
+              ...a,
+              class_id: normalizedClassId,
+              class_name: cls.name || normalizedClassId,
+              subject_name: cls.subjectName || ''
+            }))
+          } catch (error) {
+            console.error(`Error fetching assignments for class ${cls.id || cls.class_id}:`, error)
+            return []
+          }
+        })
+
+        const allAssignmentsArrays = await Promise.all(assignmentPromises)
+        const allAssignments = allAssignmentsArrays.flat()
+
+        console.log('All assignments:', allAssignments)
+        setAssignments(allAssignments)
+      } catch (error: any) {
+        console.error('Error fetching assignments:', error)
+        toaster.create({
+          title: 'Lỗi',
+          description: 'Không thể tải danh sách bài tập',
+          type: 'error'
+        })
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchAllAssignments()
+  }, [])
 
   // Generate calendar days
-  const calendarDays = useMemo<CalendarDayWithAssignments[]>(() => {
+  const calendarDays = useMemo<CalendarDayData[]>(() => {
     const year = currentDate.getFullYear()
     const month = currentDate.getMonth()
 
@@ -85,7 +157,7 @@ export default function StudentCalendar() {
     const endDate = new Date(lastDay)
     endDate.setDate(endDate.getDate() + (6 - lastDay.getDay()))
 
-    const days: CalendarDay[] = []
+    const days: CalendarDayData[] = []
     const current = new Date(startDate)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
@@ -93,6 +165,7 @@ export default function StudentCalendar() {
     while (current <= endDate) {
       const dateStr = current.toISOString().split('T')[0]
       const dayAssignments = assignments.filter((a) => {
+        if (!a.deadline) return false
         const assignmentDate = new Date(a.deadline).toISOString().split('T')[0]
         return assignmentDate === dateStr
       })
@@ -123,10 +196,35 @@ export default function StudentCalendar() {
     setCurrentDate(new Date())
   }
 
-  // Handle assignment click
-  const handleAssignmentClick = (assignment: CalendarAssignment) => {
-    setSelectedAssignment(assignment)
-    setModalOpen(true)
+  // Handle day click - show modal with assignments
+  const handleDayClick = (day: CalendarDayData) => {
+    if (day.assignments.length > 0) {
+      setSelectedDay(day)
+      setModalOpen(true)
+    }
+  }
+
+  // Format deadline time
+  const formatDeadline = (deadline: string) => {
+    const date = new Date(deadline)
+    return date.toLocaleString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    })
+  }
+
+  // Check if deadline is overdue
+  const isOverdue = (deadline: string) => {
+    return new Date(deadline) < new Date()
+  }
+
+  // Handle assignment click - navigate to class detail
+  const handleAssignmentClick = (assignment: CalendarAssignmentItem) => {
+    setModalOpen(false)
+    navigate(`/student/course-details/${assignment.class_id}`)
   }
 
   return (
@@ -249,8 +347,10 @@ export default function StudentCalendar() {
                   borderLeft={index % 7 === 0 ? 'none' : '1px solid'}
                   borderColor='orange.100'
                   position='relative'
+                  cursor={day.assignments.length > 0 ? 'pointer' : 'default'}
                   _hover={{ bg: day.isCurrentMonth ? 'orange.50' : 'gray.100' }}
                   transition='all 0.2s'
+                  onClick={() => handleDayClick(day)}
                 >
                   {/* Date number */}
                   <Text
@@ -270,19 +370,17 @@ export default function StudentCalendar() {
 
                   {/* Assignments */}
                   <VStack align='stretch' gap={1}>
-                    {day.assignments.slice(0, 3).map((assignment) => (
+                    {day.assignments.slice(0, 3).map((assignment, idx) => (
                       <Box
-                        key={assignment.id}
+                        key={`${assignment.id}-${idx}`}
                         px={2}
                         py={1}
-                        bg={TYPE_COLORS[assignment.type]}
+                        bg={TYPE_COLORS[assignment.type] || '#6b7280'}
                         color='white'
                         borderRadius='md'
                         fontSize='xs'
-                        cursor='pointer'
                         _hover={{ opacity: 0.8, transform: 'scale(1.02)' }}
                         transition='all 0.2s'
-                        onClick={() => handleAssignmentClick(assignment)}
                         lineClamp={1}
                       >
                         {assignment.title}
@@ -301,7 +399,159 @@ export default function StudentCalendar() {
         )}
 
         {/* Assignment Modal */}
-        <AssignmentModal isOpen={modalOpen} onClose={() => setModalOpen(false)} assignment={selectedAssignment} />
+        {modalOpen && selectedDay && (
+          <Box
+            position='fixed'
+            top={0}
+            left={0}
+            right={0}
+            bottom={0}
+            bg='blackAlpha.600'
+            zIndex={1000}
+            display='flex'
+            alignItems='center'
+            justifyContent='center'
+            onClick={() => setModalOpen(false)}
+          >
+            <Box
+              bg='white'
+              borderRadius='xl'
+              maxW='500px'
+              w='90%'
+              maxH='80vh'
+              overflow='hidden'
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <Flex
+                justify='space-between'
+                align='center'
+                p={4}
+                borderBottom='1px solid'
+                borderColor='gray.200'
+                bg='orange.50'
+              >
+                <Text fontWeight='bold' color='#dd7323'>
+                  Bài tập ngày {selectedDay.date.toLocaleDateString('vi-VN')}
+                </Text>
+                <IconButton
+                  aria-label='Đóng'
+                  variant='ghost'
+                  size='sm'
+                  onClick={() => setModalOpen(false)}
+                >
+                  <X size={20} />
+                </IconButton>
+              </Flex>
+
+              {/* Modal Body */}
+              <Box p={4} maxH='60vh' overflowY='auto'>
+                <VStack gap={3} align='stretch'>
+                  {selectedDay.assignments.map((assignment, idx) => (
+                    <Box
+                      key={`${assignment.id}-${idx}`}
+                      p={4}
+                      borderRadius='lg'
+                      border='1px solid'
+                      borderColor='gray.200'
+                      cursor='pointer'
+                      _hover={{ borderColor: '#dd7323', shadow: 'sm', bg: 'orange.50' }}
+                      transition='all 0.2s'
+                      onClick={() => handleAssignmentClick(assignment)}
+                    >
+                      {/* Assignment Title */}
+                      <Flex align='center' justify='space-between' mb={2}>
+                        <Flex align='center' gap={2}>
+                          <Circle size='3' bg={TYPE_COLORS[assignment.type] || '#6b7280'} />
+                          <Text fontWeight='bold' color='gray.800'>
+                            {assignment.title}
+                          </Text>
+                        </Flex>
+                        <ExternalLink size={16} color='#dd7323' />
+                      </Flex>
+
+                      {/* Type Badge */}
+                      <HStack gap={2} mb={2}>
+                        <Box
+                          px={2}
+                          py={0.5}
+                          borderRadius='full'
+                          bg={`${TYPE_COLORS[assignment.type]}20`}
+                          color={TYPE_COLORS[assignment.type]}
+                          fontSize='xs'
+                          fontWeight='semibold'
+                        >
+                          {TYPE_LABELS[assignment.type] || assignment.type}
+                        </Box>
+                        {assignment.is_submitted && (
+                          <Box
+                            px={2}
+                            py={0.5}
+                            borderRadius='full'
+                            bg='green.100'
+                            color='green.600'
+                            fontSize='xs'
+                            fontWeight='semibold'
+                          >
+                            Đã nộp
+                          </Box>
+                        )}
+                        {!assignment.is_submitted && isOverdue(assignment.deadline) && (
+                          <Box
+                            px={2}
+                            py={0.5}
+                            borderRadius='full'
+                            bg='red.100'
+                            color='red.600'
+                            fontSize='xs'
+                            fontWeight='semibold'
+                          >
+                            Quá hạn
+                          </Box>
+                        )}
+                      </HStack>
+
+                      {/* Class Info */}
+                      <HStack gap={2} mb={2} color='gray.600' fontSize='sm'>
+                        <BookOpen size={14} />
+                        <Text>{assignment.class_name || assignment.class_id}</Text>
+                      </HStack>
+
+                      {/* Deadline */}
+                      <HStack gap={2} color={isOverdue(assignment.deadline) ? 'red.500' : 'gray.600'} fontSize='sm'>
+                        <Clock size={14} />
+                        <Text>Hạn nộp: {formatDeadline(assignment.deadline)}</Text>
+                      </HStack>
+
+                      {/* Description */}
+                      {assignment.description && (
+                        <Box mt={2} pt={2} borderTop='1px solid' borderColor='gray.100'>
+                          <HStack gap={2} color='gray.500' fontSize='sm' mb={1}>
+                            <FileText size={14} />
+                            <Text fontWeight='medium'>Mô tả:</Text>
+                          </HStack>
+                          <Text fontSize='sm' color='gray.600'>
+                            {assignment.description}
+                          </Text>
+                        </Box>
+                      )}
+
+                      {/* Score if available */}
+                      {assignment.score !== null && assignment.score !== undefined && (
+                        <Box mt={2} pt={2} borderTop='1px solid' borderColor='gray.100'>
+                          <Text fontSize='sm' color='gray.600'>
+                            Điểm: <Text as='span' fontWeight='bold' color='#dd7323'>{assignment.score}</Text>
+                            {assignment.max_score && ` / ${assignment.max_score}`}
+                          </Text>
+                        </Box>
+                      )}
+                    </Box>
+                  ))}
+                </VStack>
+              </Box>
+            </Box>
+          </Box>
+        )}
       </Box>
     </Box>
   )

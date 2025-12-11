@@ -11,7 +11,8 @@ interface Assignment {
   title: string
   type: 'homework' | 'project' | 'midterm' | 'final'
   deadline: string
-  max_score: number
+  max_score?: number
+  maxScore?: number
   description?: string
 }
 
@@ -319,7 +320,7 @@ export default function AssignmentDetailModal({
                                 Điểm số:
                               </Text>
                               <Text fontSize='xl' fontWeight='bold' color='#dd7323'>
-                                {submission?.score} / {assignment.max_score}
+                                {submission?.score} / {assignment.max_score || assignment.maxScore || 10}
                               </Text>
                             </HStack>
                           )}

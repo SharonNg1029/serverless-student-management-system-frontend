@@ -78,7 +78,8 @@ interface Assignment {
   title: string
   type: 'homework' | 'project' | 'midterm' | 'final'
   deadline: string
-  max_score: number
+  max_score?: number
+  maxScore?: number
   description?: string
 }
 
@@ -130,7 +131,12 @@ export default function AssignmentTab({ classId }: AssignmentTabProps) {
       console.log('Assignments response:', response.data)
       // Handle different response formats
       const data = response.data?.results || response.data?.data || response.data || []
-      setAssignments(Array.isArray(data) ? data : [])
+      // Map API response to ensure max_score is available
+      const mappedData = (Array.isArray(data) ? data : []).map((a: any) => ({
+        ...a,
+        max_score: a.max_score || a.maxScore || 10
+      }))
+      setAssignments(mappedData)
     } catch (err) {
       console.error('Failed to fetch assignments:', err)
       setAssignments([])

@@ -43,7 +43,8 @@ export default function UserMenu({ variant }: UserMenuProps) {
         return [
           { value: 'profile', label: 'Profile', icon: <User size={18} />, path: '/profile' },
           { value: 'my-courses', label: 'My Courses', icon: <BookOpen size={18} />, path: '/student/my-courses' },
-          { value: 'calendar', label: 'Deadline Calendar', icon: <CalendarDays size={18} />, path: '/student/calendar' }
+          { value: 'all-courses', label: 'All Courses', icon: <BookOpen size={18} />, path: '/student/search' },
+          { value: 'calendar', label: 'Calendar', icon: <CalendarDays size={18} />, path: '/student/calendar' }
         ]
       case 'Lecturer':
         return [

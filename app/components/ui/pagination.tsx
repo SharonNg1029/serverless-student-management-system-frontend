@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { HStack, IconButton, Text, Box } from '@chakra-ui/react'
+import { HStack, IconButton, Text, Box, createListCollection } from '@chakra-ui/react'
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { SelectRoot, SelectTrigger, SelectValueText, SelectContent, SelectItem } from './select'
 
 interface PaginationProps {
   currentPage: number
@@ -78,17 +79,27 @@ export const Pagination = ({
             <Text fontSize='sm' color='gray.600'>
               Số dòng:
             </Text>
-            <select
-              value={pageSize}
-              onChange={(e) => onPageSizeChange(Number(e.target.value))}
-              className='px-2 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-[#dd7323] focus:border-transparent'
+            <SelectRoot
+              collection={createListCollection({
+                items: pageSizeOptions.map((size) => ({ label: String(size), value: String(size) }))
+              })}
+              value={[String(pageSize)]}
+              onValueChange={(e: any) => onPageSizeChange(Number(e.value[0]))}
+              size='sm'
+              variant='outline'
+              width='80px'
             >
-              {pageSizeOptions.map((size) => (
-                <option key={size} value={size}>
-                  {size}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger>
+                <SelectValueText placeholder={String(pageSize)} />
+              </SelectTrigger>
+              <SelectContent>
+                {pageSizeOptions.map((size) => (
+                  <SelectItem key={size} item={{ label: String(size), value: String(size) }}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </SelectRoot>
           </HStack>
         )}
       </HStack>

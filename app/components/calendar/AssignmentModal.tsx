@@ -27,6 +27,7 @@ interface AssignmentModalProps {
   isOpen: boolean
   onClose: () => void
   assignment: CalendarAssignment | null
+  variant?: 'student' | 'lecturer'
 }
 
 // Assignment type colors
@@ -45,7 +46,7 @@ const TYPE_WEIGHTS: Record<string, string> = {
   final: '25%'
 }
 
-export default function AssignmentModal({ isOpen, onClose, assignment }: AssignmentModalProps) {
+export default function AssignmentModal({ isOpen, onClose, assignment, variant = 'student' }: AssignmentModalProps) {
   const navigate = useNavigate()
 
   if (!assignment) return null
@@ -84,7 +85,11 @@ export default function AssignmentModal({ isOpen, onClose, assignment }: Assignm
 
   const handleViewDetail = () => {
     onClose()
-    navigate(`/student/my-courses/${assignment.class_id}/assignments/${assignment.id}`)
+    if (variant === 'lecturer') {
+      navigate(`/lecturer/classes/${assignment.class_id}`)
+    } else {
+      navigate(`/student/course-details/${assignment.class_id}`)
+    }
   }
 
   return (

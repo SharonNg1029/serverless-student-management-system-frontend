@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Search, Plus, Download, MoreVertical, ChevronLeft, ChevronRight, Edit, Ban } from 'lucide-react'
+import { Search, Plus, Download, MoreVertical, Edit, Ban } from 'lucide-react'
 
 export interface Column<T> {
   header: string
@@ -201,20 +201,7 @@ function TableList<T extends { id: string | number }>({
           </table>
         </div>
 
-        {/* Pagination (Static UI) */}
-        {!isLoading && data.length > 0 && (
-          <div className='px-6 py-4 border-t border-slate-100 flex items-center justify-between'>
-            <span className='text-sm text-slate-500'>Hiển thị 1-10 trên tổng số {data.length}</span>
-            <div className='flex items-center gap-2'>
-              <button className='p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 disabled:opacity-50'>
-                <ChevronLeft size={16} />
-              </button>
-              <button className='p-2 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500'>
-                <ChevronRight size={16} />
-              </button>
-            </div>
-          </div>
-        )}
+
       </div>
     </div>
   )

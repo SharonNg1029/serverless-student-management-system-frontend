@@ -132,6 +132,7 @@ export default function Navbar() {
         return [
           { label: 'Home', href: '/home' },
           { label: 'My Courses', href: '/student/my-courses' },
+          { label: 'All Courses', href: '/student/search' },
           { label: 'Thông báo', href: '/student/notifications-receive' }
         ]
 

@@ -1,12 +1,11 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useMemo } from 'react'
 import { useNavigate } from 'react-router'
 import { useQuery } from '@tanstack/react-query'
 import {
   Box,
   Grid,
-  GridItem,
   Text,
   Heading,
   Badge,
@@ -16,17 +15,13 @@ import {
   Circle,
   Spinner,
   Center,
-  IconButton,
   Button
 } from '@chakra-ui/react'
 import {
   Bell,
   BookOpen,
-  Calendar,
   Award,
   Megaphone,
-  ChevronLeft,
-  ChevronRight,
   ChevronRight as ArrowRight,
   FileText,
   Users,
@@ -38,10 +33,7 @@ import PageHeader from '../../components/ui/PageHeader'
 import StatsCard from '../../components/ui/StatsCard'
 import { lecturerClassApi, lecturerNotificationApi } from '../../services/lecturerApi'
 import type { ClassDTO, NotificationDTO } from '../../types'
-
-// ============================================
-// USE REAL API DATA
-// ============================================
+import MiniCalendar from '../../components/calendar/MiniCalendar'
 
 // ============================================
 // HELPER FUNCTIONS
@@ -74,21 +66,9 @@ const getRelativeTime = (dateStr: string): string => {
   return formatDate(date)
 }
 
-// Calendar constants
-const DAYS_SHORT = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']
-
-// Extended CalendarDay for lecturer dashboard
-interface LecturerCalendarDay {
-  date: Date
-  isCurrentMonth: boolean
-  isToday: boolean
-  hasDeadline: boolean
-}
-
 export default function LecturerDashboard() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
-  const [currentDate, setCurrentDate] = useState(new Date())
   const today = new Date()
 
   // Fetch classes - API trả về { data: [...], count, message, status }
@@ -156,45 +136,6 @@ export default function LecturerDashboard() {
   const totalStudents = classes.reduce((sum: number, c: any) => sum + (c.student_count || c.studentCount || 0), 0)
 
   const statsLoading = classesLoading || notificationsLoading
-
-  // Generate mini calendar days
-  const calendarDays = useMemo<LecturerCalendarDay[]>(() => {
-    const year = currentDate.getFullYear()
-    const month = currentDate.getMonth()
-
-    const firstDay = new Date(year, month, 1)
-    const lastDay = new Date(year, month + 1, 0)
-
-    const startDate = new Date(firstDay)
-    startDate.setDate(startDate.getDate() - firstDay.getDay())
-
-    const endDate = new Date(lastDay)
-    endDate.setDate(endDate.getDate() + (6 - lastDay.getDay()))
-
-    const days: LecturerCalendarDay[] = []
-    const current = new Date(startDate)
-    const todayDate = new Date()
-    todayDate.setHours(0, 0, 0, 0)
-
-    // Mock deadlines (7 days after assignment deadlines)
-    const mockDeadlineDays = [10, 15, 22, 28]
-
-    while (current <= endDate) {
-      days.push({
-        date: new Date(current),
-        isCurrentMonth: current.getMonth() === month,
-        isToday: current.getTime() === todayDate.getTime(),
-        hasDeadline: mockDeadlineDays.includes(current.getDate()) && current.getMonth() === month
-      })
-      current.setDate(current.getDate() + 1)
-    }
-
-    return days
-  }, [currentDate])
-
-  // Calendar navigation
-  const goToPrevMonth = () => setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
-  const goToNextMonth = () => setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
 
   return (
     <Box minH='100vh' bg='white' py={8} px={{ base: 4, md: 6, lg: 8 }}>
@@ -375,108 +316,7 @@ export default function LecturerDashboard() {
           </Card.Root>
 
           {/* Right Column - Mini Calendar */}
-          <Card.Root
-            bg='white'
-            borderRadius='xl'
-            border='1px solid'
-            borderColor='orange.100'
-            shadow='sm'
-            height='fit-content'
-          >
-            <Card.Header pb={2} pt={5} px={6}>
-              <HStack justify='space-between'>
-                <HStack gap={3}>
-                  <Box p={2} bg='#dd7323' borderRadius='lg'>
-                    <Calendar size={20} color='white' />
-                  </Box>
-                  <Heading size='md' color='gray.800'>
-                    Lịch chấm bài
-                  </Heading>
-                </HStack>
-              </HStack>
-            </Card.Header>
-
-            <Card.Body pt={2} pb={4}>
-              {/* Calendar Navigation */}
-              <HStack justify='space-between' mb={3}>
-                <IconButton
-                  aria-label='Tháng trước'
-                  variant='ghost'
-                  size='sm'
-                  color='#dd7323'
-                  _hover={{ bg: 'orange.50' }}
-                  onClick={goToPrevMonth}
-                >
-                  <ChevronLeft size={18} />
-                </IconButton>
-                <Text fontWeight='semibold' color='#dd7323'>
-                  Tháng {currentDate.getMonth() + 1}/{currentDate.getFullYear()}
-                </Text>
-                <IconButton
-                  aria-label='Tháng sau'
-                  variant='ghost'
-                  size='sm'
-                  color='#dd7323'
-                  _hover={{ bg: 'orange.50' }}
-                  onClick={goToNextMonth}
-                >
-                  <ChevronRight size={18} />
-                </IconButton>
-              </HStack>
-
-              {/* Day Headers */}
-              <Grid templateColumns='repeat(7, 1fr)' gap={1} mb={2}>
-                {DAYS_SHORT.map((day) => (
-                  <Text key={day} textAlign='center' fontSize='xs' fontWeight='semibold' color='#dd7323'>
-                    {day}
-                  </Text>
-                ))}
-              </Grid>
-
-              {/* Calendar Grid */}
-              <Grid templateColumns='repeat(7, 1fr)' gap={1}>
-                {calendarDays.map((day, index) => (
-                  <GridItem
-                    key={index}
-                    p={1}
-                    textAlign='center'
-                    borderRadius='md'
-                    bg={day.isToday ? '#dd7323' : 'transparent'}
-                    color={day.isToday ? 'white' : day.isCurrentMonth ? 'gray.800' : 'gray.400'}
-                    position='relative'
-                    minH='32px'
-                    display='flex'
-                    alignItems='center'
-                    justifyContent='center'
-                  >
-                    <Text fontSize='sm' fontWeight={day.isToday ? 'bold' : 'normal'}>
-                      {day.date.getDate()}
-                    </Text>
-                    {day.hasDeadline && !day.isToday && (
-                      <Circle
-                        size='2'
-                        bg='red.500'
-                        position='absolute'
-                        bottom='2px'
-                        left='50%'
-                        transform='translateX(-50%)'
-                      />
-                    )}
-                  </GridItem>
-                ))}
-              </Grid>
-
-              {/* Legend */}
-              <HStack gap={4} mt={4} justify='center'>
-                <HStack gap={1}>
-                  <Circle size='2' bg='red.500' />
-                  <Text fontSize='xs' color='gray.600'>
-                    Deadline chấm bài
-                  </Text>
-                </HStack>
-              </HStack>
-            </Card.Body>
-          </Card.Root>
+          <MiniCalendar variant='lecturer' />
         </Grid>
       </Box>
     </Box>

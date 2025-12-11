@@ -316,7 +316,7 @@ export default function LoginRoute() {
       <div className='login-wrapper'>
         <div className='login-header'>
           <div className='login-brand'>
-            <img src='/Logo_AWS_FCJ.png' alt='LMS FCJ Logo' className='login-logo' />
+            <img src='/Logo_FCJ_New.jpg' alt='LMS FCJ Logo' className='login-logo' />
           </div>
         </div>
 
